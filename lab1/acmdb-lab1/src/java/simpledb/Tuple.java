@@ -1,107 +1,110 @@
 package simpledb;
 
 import java.io.Serializable;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Iterator;
 
 /**
- * Tuple maintains information about the contents of a tuple. Tuples have a
- * specified schema specified by a TupleDesc object and contain Field objects
- * with the data for each field.
+ * Tuple 维护了一个元组内容的信息。元组有一个由 TupleDesc 对象指定的指定模式，并包含带有每个字段数据的 Field 对象。
  */
 public class Tuple implements Serializable {
 
     private static final long serialVersionUID = 1L;
+    
+    private TupleDesc td;
+    private RecordId rid;
+    private ArrayList<Field> fields;
 
     /**
-     * Create a new tuple with the specified schema (type).
+     * 根据指定的模式（类型）创建一个新的元组。
      *
      * @param td
-     *            the schema of this tuple. It must be a valid TupleDesc
-     *            instance with at least one field.
+     *            这个元组的模式。它必须是一个有效的 TupleDesc 实例，且至少包含一个字段。
      */
     public Tuple(TupleDesc td) {
-        // some code goes here
+        this.td = td;
+        fields = new ArrayList<Field>(td.numFields());
     }
 
     /**
-     * @return The TupleDesc representing the schema of this tuple.
+     * @return 表示这个元组模式的 TupleDesc。
      */
     public TupleDesc getTupleDesc() {
-        // some code goes here
-        return null;
+        return td;
     }
 
     /**
-     * @return The RecordId representing the location of this tuple on disk. May
-     *         be null.
+     * @return 表示这个元组在磁盘上位置的 RecordId。可能为 null。
      */
     public RecordId getRecordId() {
-        // some code goes here
-        return null;
+        return rid;
     }
 
     /**
-     * Set the RecordId information for this tuple.
+     * 为这个元组设置 RecordId 信息。
      *
      * @param rid
-     *            the new RecordId for this tuple.
+     *            这个元组的新 RecordId。
      */
     public void setRecordId(RecordId rid) {
-        // some code goes here
+        this.rid = rid;
     }
 
     /**
-     * Change the value of the ith field of this tuple.
+     * 改变这个元组的第 i 个字段的值。
      *
      * @param i
-     *            index of the field to change. It must be a valid index.
+     *            要更改的字段的索引。必须是一个有效的索引。
      * @param f
-     *            new value for the field.
+     *            字段的新值。
      */
     public void setField(int i, Field f) {
-        // some code goes here
+        fields.set(i, f);
     }
 
     /**
-     * @return the value of the ith field, or null if it has not been set.
+     * @return 第 i 个字段的值，如果它还没有被设置，则返回 null。
      *
      * @param i
-     *            field index to return. Must be a valid index.
+     *            要返回的字段索引。必须是一个有效的索引。
      */
     public Field getField(int i) {
-        // some code goes here
-        return null;
+        return fields.get(i);
     }
 
     /**
-     * Returns the contents of this Tuple as a string. Note that to pass the
-     * system tests, the format needs to be as follows:
+     * 以字符串形式返回这个 Tuple 的内容。注意，为了通过系统测试，格式需要如下所示：
      *
      * column1\tcolumn2\tcolumn3\t...\tcolumnN
      *
-     * where \t is any whitespace (except a newline)
+     * 其中 \t 是任何空白符（换行符除外）
      */
     public String toString() {
-        // some code goes here
-        throw new UnsupportedOperationException("Implement this");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < fields.size(); i++) {
+            Field field = fields.get(i);
+            if (i > 0) sb.append(" ");
+            sb.append(field.toString());
+        }
+        return sb.toString();
+        // throw new UnsupportedOperationException("Implement this");
     }
 
     /**
      * @return
-     *        An iterator which iterates over all the fields of this tuple
+     *        一个迭代器，它迭代这个元组的所有字段
      * */
     public Iterator<Field> fields()
     {
-        // some code goes here
-        return null;
+        return fields.iterator();
     }
 
     /**
-     * reset the TupleDesc of thi tuple
+     * 重置这个元组的 TupleDesc
      * */
     public void resetTupleDesc(TupleDesc td)
     {
-        // some code goes here
+        this.td = td;
+        fields = new ArrayList<Field>(td.numFields());
     }
 }

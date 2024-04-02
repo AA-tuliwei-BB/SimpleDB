@@ -4,25 +4,27 @@ import java.io.Serializable;
 import java.util.*;
 
 /**
- * TupleDesc describes the schema of a tuple.
+ * TupleDesc 描述了一个元组的模式。
  */
 public class TupleDesc implements Serializable {
 
+    private ArrayList<TDItem> List;
+
     /**
-     * A help class to facilitate organizing the information of each field
-     * */
+     * 一个辅助类，用于组织每个字段的信息
+     */
     public static class TDItem implements Serializable {
 
         private static final long serialVersionUID = 1L;
 
         /**
-         * The type of the field
-         * */
+         * 字段的类型
+         */
         public final Type fieldType;
         
         /**
-         * The name of the field
-         * */
+         * 字段的名称
+         */
         public final String fieldName;
 
         public TDItem(Type t, String n) {
@@ -36,148 +38,177 @@ public class TupleDesc implements Serializable {
     }
 
     /**
-     * @return
-     *        An iterator which iterates over all the field TDItems
-     *        that are included in this TupleDesc
-     * */
+     * 返回一个迭代器，它遍历包含在此TupleDesc中的所有字段TDItems
+     */
     public Iterator<TDItem> iterator() {
-        // some code goes here
-        return null;
+        return List.iterator();
     }
 
     private static final long serialVersionUID = 1L;
 
     /**
-     * Create a new TupleDesc with typeAr.length fields with fields of the
-     * specified types, with associated named fields.
+     * 创建一个新的TupleDesc，具有typeAr.length个字段，这些字段具有指定的类型，与关联的命名字段。
      * 
-     * @param typeAr
-     *            array specifying the number of and types of fields in this
-     *            TupleDesc. It must contain at least one entry.
-     * @param fieldAr
-     *            array specifying the names of the fields. Note that names may
-     *            be null.
+     * @param typeAr 指定此TupleDesc中的字段数量和类型的数组。它必须至少包含一个条目。
+     * @param fieldAr 指定字段名称的数组。注意，名称可以为null。
      */
     public TupleDesc(Type[] typeAr, String[] fieldAr) {
-        // some code goes here
+        List = new ArrayList<TDItem>(typeAr.length);
+        for (int i = 0; i < typeAr.length; i++) {
+            List.set(i, new TDItem(typeAr[i], fieldAr[i]));
+        }
     }
 
     /**
-     * Constructor. Create a new tuple desc with typeAr.length fields with
-     * fields of the specified types, with anonymous (unnamed) fields.
+     * 构造函数。创建一个新的tuple desc，具有typeAr.length个字段，这些字段具有指定的类型，与匿名（未命名）字段。
      * 
-     * @param typeAr
-     *            array specifying the number of and types of fields in this
-     *            TupleDesc. It must contain at least one entry.
+     * @param typeAr 指定此TupleDesc中的字段数量和类型的数组。它必须至少包含一个条目。
      */
     public TupleDesc(Type[] typeAr) {
-        // some code goes here
+        List = new ArrayList<TDItem>(typeAr.length);
+        for (int i = 0; i < typeAr.length; i++) {
+            List.set(i, new TDItem(typeAr[i], null));
+        }
     }
 
     /**
-     * @return the number of fields in this TupleDesc
+     * 返回此TupleDesc中的字段数量
      */
     public int numFields() {
-        // some code goes here
-        return 0;
+        return List.size();
     }
 
     /**
-     * Gets the (possibly null) field name of the ith field of this TupleDesc.
+     * 获取此TupleDesc的第i个字段的（可能为null的）字段名称。
      * 
-     * @param i
-     *            index of the field name to return. It must be a valid index.
-     * @return the name of the ith field
-     * @throws NoSuchElementException
-     *             if i is not a valid field reference.
+     * @param i 要返回的字段名称的索引。它必须是一个有效的索引。
+     * @return 第i个字段的名称
+     * @throws NoSuchElementException 如果i不是一个有效的字段引用。
      */
     public String getFieldName(int i) throws NoSuchElementException {
-        // some code goes here
-        return null;
+        if (i < List.size()) {
+            return List.get(i).fieldName;
+        } else {
+            throw new NoSuchElementException();
+        }
     }
 
     /**
-     * Gets the type of the ith field of this TupleDesc.
+     * 获取此TupleDesc的第i个字段的类型。
      * 
-     * @param i
-     *            The index of the field to get the type of. It must be a valid
-     *            index.
-     * @return the type of the ith field
-     * @throws NoSuchElementException
-     *             if i is not a valid field reference.
+     * @param i 要获取类型的字段的索引。它必须是一个有效的索引。
+     * @return 第i个字段的类型
+     * @throws NoSuchElementException 如果i不是一个有效的字段引用。
      */
     public Type getFieldType(int i) throws NoSuchElementException {
-        // some code goes here
-        return null;
+        if (i < List.size()) {
+            return List.get(i).fieldType;
+        } else {
+            throw new NoSuchElementException();
+        }
     }
 
     /**
-     * Find the index of the field with a given name.
+     * 查找具有给定名称的字段的索引。
      * 
-     * @param name
-     *            name of the field.
-     * @return the index of the field that is first to have the given name.
-     * @throws NoSuchElementException
-     *             if no field with a matching name is found.
+     * @param name 字段的名称。
+     * @return 首先具有给定名称的字段的索引。
+     * @throws NoSuchElementException 如果找不到具有匹配名称的字段。
      */
     public int fieldNameToIndex(String name) throws NoSuchElementException {
-        // some code goes here
-        return 0;
+        for (int i = 0; i < List.size(); ++i) {
+            if (List.get(i).fieldName == name) {
+                return i;
+            }
+        }
+        throw new NoSuchElementException();
     }
 
     /**
-     * @return The size (in bytes) of tuples corresponding to this TupleDesc.
-     *         Note that tuples from a given TupleDesc are of a fixed size.
+     * 返回与此TupleDesc对应的元组的大小（以字节为单位）。
+     * 注意，给定TupleDesc的元组是固定大小的。
      */
     public int getSize() {
-        // some code goes here
-        return 0;
+        int result = 0;
+        for (TDItem item : List) {
+            result += item.fieldType.getLen();
+        }
+        return result;
     }
 
     /**
-     * Merge two TupleDescs into one, with td1.numFields + td2.numFields fields,
-     * with the first td1.numFields coming from td1 and the remaining from td2.
+     * 将两个TupleDesc合并为一个，具有td1.numFields + td2.numFields字段，
+     * 其中前td1.numFields字段来自td1，其余来自td2。
      * 
-     * @param td1
-     *            The TupleDesc with the first fields of the new TupleDesc
-     * @param td2
-     *            The TupleDesc with the last fields of the TupleDesc
-     * @return the new TupleDesc
+     * @param td1 具有新TupleDesc前几个字段的TupleDesc
+     * @param td2 具有TupleDesc后几个字段的TupleDesc
+     * @return 新的TupleDesc
      */
     public static TupleDesc merge(TupleDesc td1, TupleDesc td2) {
-        // some code goes here
-        return null;
+        int len = td1.numFields() + td2.numFields();
+        Type[] mergTypes = new Type[len];
+        String[] mergStrings = new String[len];
+        for (int i = 0; i < td1.numFields(); ++i) {
+            mergTypes[i] = td1.getFieldType(i);
+            mergStrings[i] = td1.getFieldName(i);
+        }
+        for (int i = 0; i < td2.numFields(); ++i) {
+            mergTypes[td1.numFields() + i] = td2.getFieldType(i);
+            mergStrings[td1.numFields() + i] = td2.getFieldName(i);
+        }
+        return new TupleDesc(mergTypes, mergStrings);
     }
 
     /**
-     * Compares the specified object with this TupleDesc for equality. Two
-     * TupleDescs are considered equal if they are the same size and if the n-th
-     * type in this TupleDesc is equal to the n-th type in td.
+     * 将指定对象与此TupleDesc进行比较以确定是否相等。如果它们的大小相同且
+     * 此TupleDesc中的第n个类型等于td中的第n个类型，则认为两个TupleDescs相等。
      * 
-     * @param o
-     *            the Object to be compared for equality with this TupleDesc.
-     * @return true if the object is equal to this TupleDesc.
+     * @param o 与此TupleDesc比较等式的对象。
+     * @return 如果对象等于此TupleDesc，则为true。
      */
     public boolean equals(Object o) {
-        // some code goes here
-        return false;
+        // 一些代码在这里
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        TupleDesc tupleDesc = (TupleDesc) o;
+        if (this.List.size() != tupleDesc.List.size()) return false;
+        for (int i = 0; i < this.List.size(); i++) {
+            Type type1 = this.List.get(i).fieldType;
+            Type type2 = tupleDesc.List.get(i).fieldType;
+            if (type1.ordinal() != type2.ordinal()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public int hashCode() {
-        // If you want to use TupleDesc as keys for HashMap, implement this so
-        // that equal objects have equals hashCode() results
-        throw new UnsupportedOperationException("unimplemented");
+        // 如果您想将TupleDesc用作HashMap的键，请实现它，
+        // 以便相等的对象具有相等的hashCode()结果
+        int result = 1;
+        for (TDItem item : this.List) {
+            result = 31 * result + item.fieldType.ordinal();
+        }
+        return result;
+        // throw new UnsupportedOperationException("unimplemented");
     }
 
     /**
-     * Returns a String describing this descriptor. It should be of the form
-     * "fieldType[0](fieldName[0]), ..., fieldType[M](fieldName[M])", although
-     * the exact format does not matter.
+     * 返回描述此描述符的字符串。它应该是"fieldType[0](fieldName[0]), ..., fieldType[M](fieldName[M])"的形式，
+     * 尽管确切的格式并不重要。
      * 
-     * @return String describing this descriptor.
+     * @return 描述此描述符的字符串。
      */
     public String toString() {
-        // some code goes here
-        return "";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < List.size(); i++) {
+            TDItem item = List.get(i);
+            if (i > 0) sb.append(", ");
+            sb.append(item.fieldType.toString());
+            if (item.fieldName != null && !item.fieldName.isEmpty()) {
+                sb.append("(").append(item.fieldName).append(")");
+            }
+        }
+        return sb.toString();
     }
 }
