@@ -4,103 +4,160 @@ import java.io.*;
 import java.util.*;
 
 /**
- * HeapFile is an implementation of a DbFile that stores a collection of tuples
- * in no particular order. Tuples are stored on pages, each of which is a fixed
- * size, and the file is simply a collection of those pages. HeapFile works
- * closely with HeapPage. The format of HeapPages is described in the HeapPage
- * constructor.
+ * HeapFile是DbFile的一种实现，它存储了一系列以无特定顺序排列的元组。
+ * 元组存储在页面上，每个页面都有固定的大小，文件就是这些页面的集合。
+ * HeapFile与HeapPage紧密合作。HeapPage的格式在HeapPage构造函数中有描述。
  * 
  * @see simpledb.HeapPage#HeapPage
  * @author Sam Madden
  */
 public class HeapFile implements DbFile {
 
+    private File f;
+    private TupleDesc td;
+    private RandomAccessFile raf;
+
     /**
-     * Constructs a heap file backed by the specified file.
+     * 构造一个由指定文件支持的堆文件。
      * 
      * @param f
-     *            the file that stores the on-disk backing store for this heap
-     *            file.
+     *            存储这个堆文件的磁盘后备存储的文件。
      */
     public HeapFile(File f, TupleDesc td) {
-        // some code goes here
+        this.f = f;
+        this.td = td;
+        try {
+            this.raf = new RandomAccessFile(f, "rw");
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
     }
 
     /**
-     * Returns the File backing this HeapFile on disk.
+     * 返回支持此HeapFile在磁盘上的文件。
      * 
-     * @return the File backing this HeapFile on disk.
+     * @return 支持此HeapFile在磁盘上的文件。
      */
     public File getFile() {
-        // some code goes here
-        return null;
+        return f;
     }
 
     /**
-     * Returns an ID uniquely identifying this HeapFile. Implementation note:
-     * you will need to generate this tableid somewhere ensure that each
-     * HeapFile has a "unique id," and that you always return the same value for
-     * a particular HeapFile. We suggest hashing the absolute file name of the
-     * file underlying the heapfile, i.e. f.getAbsoluteFile().hashCode().
+     * 返回唯一标识这个HeapFile的ID。实现注意：
+     * 你需要在某处生成这个表id，确保每个HeapFile都有一个“唯一id”，
+     * 并且对于特定的HeapFile总是返回相同的值。我们建议哈希HeapFile底层文件的绝对文件名，
+     * 即 f.getAbsoluteFile().hashCode()。
      * 
-     * @return an ID uniquely identifying this HeapFile.
+     * @return 唯一标识这个HeapFile的ID。
      */
     public int getId() {
-        // some code goes here
-        throw new UnsupportedOperationException("implement this");
+        return f.getAbsolutePath().hashCode();
     }
 
     /**
-     * Returns the TupleDesc of the table stored in this DbFile.
+     * 返回存储在这个DbFile中的表的TupleDesc。
      * 
-     * @return TupleDesc of this DbFile.
+     * @return 这个DbFile的TupleDesc。
      */
     public TupleDesc getTupleDesc() {
-        // some code goes here
-        throw new UnsupportedOperationException("implement this");
+        return td;
     }
 
-    // see DbFile.java for javadocs
+    // 见DbFile.java中的javadocs
     public Page readPage(PageId pid) {
-        // some code goes here
+        if (pid.getTableId() != this.getId()) {
+            return null;
+        }
+        try {
+            raf.seek(BufferPool.getPageSize() * pid.pageNumber());
+            byte[] buffer = new byte[BufferPool.getPageSize()];
+            raf.read(buffer);
+            return new HeapPage((HeapPageId)pid, buffer);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
         return null;
     }
 
-    // see DbFile.java for javadocs
+    // 见DbFile.java中的javadocs
     public void writePage(Page page) throws IOException {
-        // some code goes here
-        // not necessary for lab1
+        // 一些代码在这里
+        // lab1 不需要
     }
 
     /**
-     * Returns the number of pages in this HeapFile.
+     * 返回这个HeapFile中的页面数量。
      */
     public int numPages() {
-        // some code goes here
-        return 0;
+        int pageSie = BufferPool.getPageSize();
+        return (int) (f.length() + pageSie - 1) / pageSie;
     }
 
-    // see DbFile.java for javadocs
+    // 见DbFile.java中的javadocs
     public ArrayList<Page> insertTuple(TransactionId tid, Tuple t)
             throws DbException, IOException, TransactionAbortedException {
-        // some code goes here
+        // 一些代码在这里
         return null;
-        // not necessary for lab1
+        // lab1 不需要
     }
 
-    // see DbFile.java for javadocs
+    // 见DbFile.java中的javadocs
     public ArrayList<Page> deleteTuple(TransactionId tid, Tuple t) throws DbException,
             TransactionAbortedException {
-        // some code goes here
+        // 一些代码在这里
         return null;
-        // not necessary for lab1
+        // lab1 不需要
     }
 
-    // see DbFile.java for javadocs
+    // 见DbFile.java中的javadocs
     public DbFileIterator iterator(TransactionId tid) {
-        // some code goes here
-        return null;
+        return new DbFileIterator() {
+            private boolean closed;
+
+            /**
+             * Opens the iterator
+             * 
+             * @throws DbException when there are problems opening/accessing the database.
+             */
+            public void open() throws DbException, TransactionAbortedException {
+
+            }
+
+            /**
+             * @return true if there are more tuples available, false if no more tuples or
+             *         iterator isn't open.
+             */
+            public boolean hasNext() throws DbException, TransactionAbortedException {
+                return false;
+            }
+
+            /**
+             * Gets the next tuple from the operator (typically implementing by reading
+             * from a child operator or an access method).
+             *
+             * @return The next tuple in the iterator.
+             * @throws NoSuchElementException if there are no more tuples
+             */
+            public Tuple next() throws DbException, TransactionAbortedException, NoSuchElementException {
+                return null;
+            }
+
+            /**
+             * Resets the iterator to the start.
+             * 
+             * @throws DbException When rewind is unsupported.
+             */
+            public void rewind() throws DbException, TransactionAbortedException {
+
+            }
+
+            /**
+             * Closes the iterator.
+             */
+            public void close() {
+
+            }
+        };
     }
 
 }
-
