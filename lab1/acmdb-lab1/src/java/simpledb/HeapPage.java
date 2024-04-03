@@ -4,8 +4,7 @@ import java.util.*;
 import java.io.*;
 
 /**
- * Each instance of HeapPage stores data for one page of HeapFiles and 
- * implements the Page interface that is used by BufferPool.
+ * HeapPage的每个实例存储一个HeapFiles页面的数据，并实现了由BufferPool使用的Page接口。
  *
  * @see HeapFile
  * @see BufferPool
@@ -20,20 +19,21 @@ public class HeapPage implements Page {
     final int numSlots;
 
     byte[] oldData;
-    private final Byte oldDataLock=new Byte((byte)0);
+    private final Byte oldDataLock = new Byte((byte) 0);
 
     /**
-     * Create a HeapPage from a set of bytes of data read from disk.
-     * The format of a HeapPage is a set of header bytes indicating
-     * the slots of the page that are in use, some number of tuple slots.
-     *  Specifically, the number of tuples is equal to: <p>
-     *          floor((BufferPool.getPageSize()*8) / (tuple size * 8 + 1))
-     * <p> where tuple size is the size of tuples in this
-     * database table, which can be determined via {@link Catalog#getTupleDesc}.
-     * The number of 8-bit header words is equal to:
+     * 从磁盘读取的一组字节数据中创建一个HeapPage。
+     * HeapPage的格式是一组头部字节，指示页面中的哪些槽正在使用，以及一些数量的元组槽。
+     * 具体来说，元组的数量等于：
      * <p>
-     *      ceiling(no. tuple slots / 8)
+     * floor((BufferPool.getPageSize()*8) / (元组大小 * 8 + 1))
      * <p>
+     * 其中元组大小是这个数据库表中元组的大小，可以通过 {@link Catalog#getTupleDesc} 确定。
+     * 8位头部字的数量等于：
+     * <p>
+     * ceiling(元组槽数 / 8)
+     * <p>
+     * 
      * @see Database#getCatalog
      * @see Catalog#getTupleDesc
      * @see BufferPool#getPageSize()
@@ -44,17 +44,17 @@ public class HeapPage implements Page {
         this.numSlots = getNumTuples();
         DataInputStream dis = new DataInputStream(new ByteArrayInputStream(data));
 
-        // allocate and read the header slots of this page
+        // 为这个页面分配并读取头部槽
         header = new byte[getHeaderSize()];
-        for (int i=0; i<header.length; i++)
+        for (int i = 0; i < header.length; i++)
             header[i] = dis.readByte();
-        
+
         tuples = new Tuple[numSlots];
-        try{
-            // allocate and read the actual records of this page
-            for (int i=0; i<tuples.length; i++)
-                tuples[i] = readNextTuple(dis,i);
-        }catch(NoSuchElementException e){
+        try {
+            // 为这个页面分配并读取实际的记录
+            for (int i = 0; i < tuples.length; i++)
+                tuples[i] = readNextTuple(dis, i);
+        } catch (NoSuchElementException e) {
             e.printStackTrace();
         }
         dis.close();
@@ -62,67 +62,65 @@ public class HeapPage implements Page {
         setBeforeImage();
     }
 
-    /** Retrieve the number of tuples on this page.
-        @return the number of tuples on this page
-    */
-    private int getNumTuples() {        
-        // some code goes here
-        return 0;
-
+    /**
+     * 检索此页面上的元组数量。
+     * 
+     * @return 此页面上的元组数量
+     */
+    private int getNumTuples() {
+        // floor((BufferPool.getPageSize()*8) / (元组大小 * 8 + 1))
+        return (BufferPool.getPageSize() * 8) / (td.getSize() * 8 + 1);
     }
 
     /**
-     * Computes the number of bytes in the header of a page in a HeapFile with each tuple occupying tupleSize bytes
-     * @return the number of bytes in the header of a page in a HeapFile with each tuple occupying tupleSize bytes
+     * 计算一个HeapFile页面头部的字节数，每个元组占用tupleSize字节
+     * 
+     * @return 一个HeapFile页面头部的字节数，每个元组占用tupleSize字节
      */
-    private int getHeaderSize() {        
-        
-        // some code goes here
-        return 0;
-                 
+    private int getHeaderSize() {
+        // ceiling(元组槽数 / 8)
+        return (numSlots + 7) / 8;
     }
-    
-    /** Return a view of this page before it was modified
-        -- used by recovery */
-    public HeapPage getBeforeImage(){
+
+    /**
+     * 返回此页面修改前的视图
+     * -- 由恢复过程使用
+     */
+    public HeapPage getBeforeImage() {
         try {
             byte[] oldDataRef = null;
-            synchronized(oldDataLock)
-            {
+            synchronized (oldDataLock) {
                 oldDataRef = oldData;
             }
-            return new HeapPage(pid,oldDataRef);
+            return new HeapPage(pid, oldDataRef);
         } catch (IOException e) {
             e.printStackTrace();
-            //should never happen -- we parsed it OK before!
+            // 永远不应该发生 -- 我们之前已经成功解析过了！
             System.exit(1);
         }
         return null;
     }
-    
+
     public void setBeforeImage() {
-        synchronized(oldDataLock)
-        {
-        oldData = getPageData().clone();
+        synchronized (oldDataLock) {
+            oldData = getPageData().clone();
         }
     }
 
     /**
-     * @return the PageId associated with this page.
+     * @return 与此页面关联的PageId。
      */
     public HeapPageId getId() {
-    // some code goes here
-    throw new UnsupportedOperationException("implement this");
+        return pid;
     }
 
     /**
-     * Suck up tuples from the source file.
+     * 从源文件吸取元组。
      */
     private Tuple readNextTuple(DataInputStream dis, int slotId) throws NoSuchElementException {
-        // if associated bit is not set, read forward to the next tuple, and
-        // return null.
+        // 如果相关位没有设置，向前读取到下一个元组，并返回null。
         if (!isSlotUsed(slotId)) {
-            for (int i=0; i<td.getSize(); i++) {
+            for (int i = 0; i < td.getSize(); i++) {
                 try {
                     dis.readByte();
                 } catch (IOException e) {
@@ -132,12 +130,12 @@ public class HeapPage implements Page {
             return null;
         }
 
-        // read fields in the tuple
+        // 读取元组中的字段
         Tuple t = new Tuple(td);
         RecordId rid = new RecordId(pid, slotId);
         t.setRecordId(rid);
         try {
-            for (int j=0; j<td.numFields(); j++) {
+            for (int j = 0; j < td.numFields(); j++) {
                 Field f = td.getFieldType(j).parse(dis);
                 t.setField(j, f);
             }
@@ -150,37 +148,36 @@ public class HeapPage implements Page {
     }
 
     /**
-     * Generates a byte array representing the contents of this page.
-     * Used to serialize this page to disk.
+     * 生成代表此页面内容的字节数组。
+     * 用于将此页面序列化到磁盘。
      * <p>
-     * The invariant here is that it should be possible to pass the byte
-     * array generated by getPageData to the HeapPage constructor and
-     * have it produce an identical HeapPage object.
+     * 这里的不变性是，应该可以将getPageData生成的字节数组传递给HeapPage构造函数，
+     * 并产生一个相同的HeapPage对象。
      *
      * @see #HeapPage
-     * @return A byte array correspond to the bytes of this page.
+     * @return 对应于此页面字节的字节数组。
      */
     public byte[] getPageData() {
         int len = BufferPool.getPageSize();
         ByteArrayOutputStream baos = new ByteArrayOutputStream(len);
         DataOutputStream dos = new DataOutputStream(baos);
 
-        // create the header of the page
-        for (int i=0; i<header.length; i++) {
+        // 创建页面的头部
+        for (int i = 0; i < header.length; i++) {
             try {
                 dos.writeByte(header[i]);
             } catch (IOException e) {
-                // this really shouldn't happen
+                // 真的不应该发生
                 e.printStackTrace();
             }
         }
 
-        // create the tuples
-        for (int i=0; i<tuples.length; i++) {
+        // 创建元组
+        for (int i = 0; i < tuples.length; i++) {
 
-            // empty slot
+            // 空槽
             if (!isSlotUsed(i)) {
-                for (int j=0; j<td.getSize(); j++) {
+                for (int j = 0; j < td.getSize(); j++) {
                     try {
                         dos.writeByte(0);
                     } catch (IOException e) {
@@ -191,20 +188,21 @@ public class HeapPage implements Page {
                 continue;
             }
 
-            // non-empty slot
-            for (int j=0; j<td.numFields(); j++) {
+            // 非空槽
+            for (int j = 0; j < td.numFields(); j++) {
                 Field f = tuples[i].getField(j);
                 try {
                     f.serialize(dos);
-                
+
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
             }
         }
 
-        // padding
-        int zerolen = BufferPool.getPageSize() - (header.length + td.getSize() * tuples.length); //- numSlots * td.getSize();
+        // 填充
+        int zerolen = BufferPool.getPageSize() - (header.length + td.getSize() * tuples.length); // - numSlots *
+                                                                                                 // td.getSize();
         byte[] zeroes = new byte[zerolen];
         try {
             dos.write(zeroes, 0, zerolen);
@@ -222,93 +220,116 @@ public class HeapPage implements Page {
     }
 
     /**
-     * Static method to generate a byte array corresponding to an empty
-     * HeapPage.
-     * Used to add new, empty pages to the file. Passing the results of
-     * this method to the HeapPage constructor will create a HeapPage with
-     * no valid tuples in it.
+     * 静态方法，生成对应于空HeapPage的字节数组。
+     * 用于向文件添加新的、空的页面。将这个方法的结果传递给HeapPage构造函数会创建一个没有有效元组的HeapPage。
      *
-     * @return The returned ByteArray.
+     * @return 返回的ByteArray。
      */
     public static byte[] createEmptyPageData() {
         int len = BufferPool.getPageSize();
-        return new byte[len]; //all 0
+        return new byte[len]; // 全部为0
     }
 
     /**
-     * Delete the specified tuple from the page;  the tuple should be updated to reflect
-     *   that it is no longer stored on any page.
-     * @throws DbException if this tuple is not on this page, or tuple slot is
-     *         already empty.
-     * @param t The tuple to delete
+     * 从页面中删除指定的元组；元组应该更新以反映它不再存储在任何页面上。
+     * 
+     * @throws DbException 如果此元组不在此页面上，或者元组槽已经为空。
+     * @param t 要删除的元组
      */
     public void deleteTuple(Tuple t) throws DbException {
-        // some code goes here
-        // not necessary for lab1
+        // 一些代码在这里
+        // lab1 不需要
     }
 
     /**
-     * Adds the specified tuple to the page;  the tuple should be updated to reflect
-     *  that it is now stored on this page.
-     * @throws DbException if the page is full (no empty slots) or tupledesc
-     *         is mismatch.
-     * @param t The tuple to add.
+     * 将指定的元组添加到页面上；元组应该更新以反映它现在存储在此页面上。
+     * 
+     * @throws DbException 如果页面已满（没有空槽）或tupledesc不匹配。
+     * @param t 要添加的元组。
      */
     public void insertTuple(Tuple t) throws DbException {
-        // some code goes here
-        // not necessary for lab1
+        // 一些代码在这里
+        // lab1 不需要
     }
 
     /**
-     * Marks this page as dirty/not dirty and record that transaction
-     * that did the dirtying
+     * 标记此页面为脏/非脏，并记录做脏它的事务
      */
     public void markDirty(boolean dirty, TransactionId tid) {
-        // some code goes here
-	// not necessary for lab1
+        // 一些代码在这里
+        // lab1 不需要
     }
 
     /**
-     * Returns the tid of the transaction that last dirtied this page, or null if the page is not dirty
+     * 返回最后使此页面脏的事务的tid，如果页面不脏则返回null
      */
     public TransactionId isDirty() {
-        // some code goes here
-	// Not necessary for lab1
-        return null;      
-    }
-
-    /**
-     * Returns the number of empty slots on this page.
-     */
-    public int getNumEmptySlots() {
-        // some code goes here
-        return 0;
-    }
-
-    /**
-     * Returns true if associated slot on this page is filled.
-     */
-    public boolean isSlotUsed(int i) {
-        // some code goes here
-        return false;
-    }
-
-    /**
-     * Abstraction to fill or clear a slot on this page.
-     */
-    private void markSlotUsed(int i, boolean value) {
-        // some code goes here
-        // not necessary for lab1
-    }
-
-    /**
-     * @return an iterator over all tuples on this page (calling remove on this iterator throws an UnsupportedOperationException)
-     * (note that this iterator shouldn't return tuples in empty slots!)
-     */
-    public Iterator<Tuple> iterator() {
-        // some code goes here
+        // 一些代码在这里
+        // lab1 不需要
         return null;
     }
 
-}
+    /**
+     * 返回此页面上空槽的数量。
+     */
+    public int getNumEmptySlots() {
+        int result = 0;
+        for (int i = 0; i < numSlots; ++i) {
+            if (!isSlotUsed(i)) {
+                result++;
+            }
+        }
+        return result;
+    }
 
+    /**
+     * 如果此页面上的相关槽已填充，则返回true。
+     */
+    public boolean isSlotUsed(int i) {
+        return (header[i / 8] & (1 << (i & 7))) != 0;
+    }
+
+    /**
+     * 在此页面上填充或清除一个槽的抽象方法。
+     */
+    private void markSlotUsed(int i, boolean value) {
+        if (isSlotUsed(i) == value) {
+            return;
+        } else {
+            header[i / 8] ^= 1 << (i & 7);
+        }
+        // lab1 不需要
+    }
+
+    /**
+     * @return 一个遍历此页面上所有元组的迭代器（在这个迭代器上调用remove会抛出UnsupportedOperationException）
+     *         （注意，这个迭代器不应该返回空槽中的元组！）
+     */
+    public Iterator<Tuple> iterator() {
+        return new Iterator<Tuple>() {
+            private int index = 0;
+            
+            @Override
+            public boolean hasNext() {
+                while (index < numSlots && !isSlotUsed(index)) {
+                    index++;
+                }
+                return index < numSlots;
+            }
+
+            @Override
+            public Tuple next() {
+                if (!hasNext()) {
+                    throw new NoSuchElementException();
+                }
+                return tuples[index++];
+            }
+
+            @Override
+            public void remove() throws UnsupportedOperationException {
+                throw new UnsupportedOperationException();
+            }
+        };
+    }
+
+}

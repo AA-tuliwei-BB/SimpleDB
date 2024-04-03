@@ -1,62 +1,60 @@
 package simpledb;
 
-/** Unique identifier for HeapPage objects. */
+/** 堆页面对象的唯一标识符。 */
 public class HeapPageId implements PageId {
 
+    private final int tableId;
+    private final int pgNo;
+
     /**
-     * Constructor. Create a page id structure for a specific page of a
-     * specific table.
+     * 构造函数。为特定表的特定页面创建一个页面id结构。
      *
-     * @param tableId The table that is being referenced
-     * @param pgNo The page number in that table.
+     * @param tableId 被引用的表
+     * @param pgNo 该表中的页面号。
      */
     public HeapPageId(int tableId, int pgNo) {
-        // some code goes here
+        this.tableId = tableId;
+        this.pgNo = pgNo;
     }
 
-    /** @return the table associated with this PageId */
+    /** @return 与此PageId关联的表 */
     public int getTableId() {
-        // some code goes here
-        return 0;
+        return tableId;
     }
 
     /**
-     * @return the page number in the table getTableId() associated with
-     *   this PageId
+     * @return 与此PageId关联的getTableId()表中的页面号
      */
     public int pageNumber() {
-        // some code goes here
-        return 0;
+        return pgNo;
     }
 
     /**
-     * @return a hash code for this page, represented by the concatenation of
-     *   the table number and the page number (needed if a PageId is used as a
-     *   key in a hash table in the BufferPool, for example.)
+     * @return 此页面的哈希码，由表号和页面号的连接表示
+     *   （例如，如果PageId被用作BufferPool中哈希表的键，则需要。）
      * @see BufferPool
      */
     public int hashCode() {
-        // some code goes here
-        throw new UnsupportedOperationException("implement this");
+        return tableId * 31 + pgNo;
     }
 
     /**
-     * Compares one PageId to another.
+     * 将一个PageId与另一个PageId进行比较。
      *
-     * @param o The object to compare against (must be a PageId)
-     * @return true if the objects are equal (e.g., page numbers and table
-     *   ids are the same)
+     * @param o 要比较的对象（必须是PageId）
+     * @return 如果对象相等（例如，页面号和表id相同）则返回true
      */
     public boolean equals(Object o) {
-        // some code goes here
-        return false;
+        if (o == null || o.getClass() != this.getClass()) {
+            return false;
+        }
+        PageId pid = (PageId) o;
+        return pid.getTableId() == tableId && pid.pageNumber() == pgNo;
     }
 
     /**
-     *  Return a representation of this object as an array of
-     *  integers, for writing to disk.  Size of returned array must contain
-     *  number of integers that corresponds to number of args to one of the
-     *  constructors.
+     * 将此对象的表示形式返回为整数数组，以便写入磁盘。返回的数组大小必须包含
+     * 与构造函数之一的参数数量相对应的整数数量。
      */
     public int[] serialize() {
         int data[] = new int[2];
