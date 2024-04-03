@@ -15,12 +15,20 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class Catalog {
 
+    private ConcurrentHashMap<String, Integer> name2id;
+    private ConcurrentHashMap<Integer, String> id2name;
+    private ConcurrentHashMap<Integer, DbFile> id2file;
+    private ConcurrentHashMap<Integer, String> id2pkey;
+
     /**
      * 构造函数。
      * 创建一个新的，空的目录。
      */
     public Catalog() {
-        // 这里填写一些代码
+        name2id = new ConcurrentHashMap<>();
+        id2name = new ConcurrentHashMap<>();
+        id2file = new ConcurrentHashMap<>();
+        id2pkey = new ConcurrentHashMap<>();
     }
 
     /**
@@ -32,7 +40,11 @@ public class Catalog {
      * @param pkeyField 主键字段的名称
      */
     public void addTable(DbFile file, String name, String pkeyField) {
-        // 这里填写一些代码
+        int id = file.getId();
+        name2id.put(name, id);
+        id2name.put(id, name);
+        id2file.put(id, file);
+        id2pkey.put(id, pkeyField);
     }
 
     public void addTable(DbFile file, String name) {
@@ -55,8 +67,15 @@ public class Catalog {
      * @throws NoSuchElementException 如果表不存在
      */
     public int getTableId(String name) throws NoSuchElementException {
-        // 这里填写一些代码
-        return 0;
+        if (name == null) {
+            throw new NoSuchElementException();
+        }
+        Integer id = name2id.get(name);
+        if (id == null) {
+            throw new NoSuchElementException();
+        } else {
+            return id.intValue();
+        }
     }
 
     /**
@@ -66,8 +85,12 @@ public class Catalog {
      * @throws NoSuchElementException 如果表不存在
      */
     public TupleDesc getTupleDesc(int tableid) throws NoSuchElementException {
-        // 这里填写一些代码
-        return null;
+        DbFile file = id2file.get(tableid);
+        if (file == null) {
+            throw new NoSuchElementException();
+        } else {
+            return file.getTupleDesc();
+        }
     }
 
     /**
@@ -76,28 +99,32 @@ public class Catalog {
      * @param tableid 表的id，由addTable传递的DbFile.getId()函数指定
      */
     public DbFile getDatabaseFile(int tableid) throws NoSuchElementException {
-        // 这里填写一些代码
-        return null;
+        DbFile file = id2file.get(tableid);
+        if (file == null) {
+            throw new NoSuchElementException();
+        } else {
+            return file;
+        }
     }
 
     public String getPrimaryKey(int tableid) {
-        // 这里填写一些代码
-        return null;
+        return id2pkey.get(tableid);
     }
 
     public Iterator<Integer> tableIdIterator() {
-        // 这里填写一些代码
-        return null;
+        return id2file.keySet().iterator();
     }
 
     public String getTableName(int id) {
-        // 这里填写一些代码
-        return null;
+        return id2name.get(id);
     }
 
     /** 从目录中删除所有表 */
     public void clear() {
-        // 这里填写一些代码
+        name2id.clear();
+        id2name.clear();
+        id2file.clear();
+        id2pkey.clear();
     }
 
     /**
