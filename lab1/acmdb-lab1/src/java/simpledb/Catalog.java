@@ -8,35 +8,31 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The Catalog keeps track of all available tables in the database and their
- * associated schemas.
- * For now, this is a stub catalog that must be populated with tables by a
- * user program before it can be used -- eventually, this should be converted
- * to a catalog that reads a catalog table from disk.
+ * Catalog 类负责跟踪数据库中所有可用表及其相关的模式。
+ * 目前，这是一个必须由用户程序填充表格后才能使用的存根目录 —— 最终，这应该被转换为一个从磁盘读取目录表的目录。
  * 
- * @Threadsafe
+ * @ThreadSafe
  */
 public class Catalog {
 
     /**
-     * Constructor.
-     * Creates a new, empty catalog.
+     * 构造函数。
+     * 创建一个新的，空的目录。
      */
     public Catalog() {
-        // some code goes here
+        // 这里填写一些代码
     }
 
     /**
-     * Add a new table to the catalog.
-     * This table's contents are stored in the specified DbFile.
-     * @param file the contents of the table to add;  file.getId() is the identfier of
-     *    this file/tupledesc param for the calls getTupleDesc and getFile
-     * @param name the name of the table -- may be an empty string.  May not be null.  If a name
-     * conflict exists, use the last table to be added as the table for a given name.
-     * @param pkeyField the name of the primary key field
+     * 向目录中添加一个新表。
+     * 此表的内容存储在指定的DbFile中。
+     * 
+     * @param file      要添加的表的内容；file.getId()是此文件/元组描述参数的标识符，用于getTupleDesc和getFile的调用
+     * @param name      表的名称 —— 可能是一个空字符串。不得为null。如果存在名称冲突，使用最后添加的表作为给定名称的表。
+     * @param pkeyField 主键字段的名称
      */
     public void addTable(DbFile file, String name, String pkeyField) {
-        // some code goes here
+        // 这里填写一些代码
     }
 
     public void addTable(DbFile file, String name) {
@@ -44,81 +40,79 @@ public class Catalog {
     }
 
     /**
-     * Add a new table to the catalog.
-     * This table has tuples formatted using the specified TupleDesc and its
-     * contents are stored in the specified DbFile.
-     * @param file the contents of the table to add;  file.getId() is the identfier of
-     *    this file/tupledesc param for the calls getTupleDesc and getFile
+     * 向目录中添加一个新表。
+     * 此表的元组使用指定的TupleDesc格式化，并且其内容存储在指定的DbFile中。
+     * 
+     * @param file 要添加的表的内容；file.getId()是此文件/元组描述参数的标识符，用于getTupleDesc和getFile的调用
      */
     public void addTable(DbFile file) {
         addTable(file, (UUID.randomUUID()).toString());
     }
 
     /**
-     * Return the id of the table with a specified name,
-     * @throws NoSuchElementException if the table doesn't exist
+     * 返回具有指定名称的表的id，
+     * 
+     * @throws NoSuchElementException 如果表不存在
      */
     public int getTableId(String name) throws NoSuchElementException {
-        // some code goes here
+        // 这里填写一些代码
         return 0;
     }
 
     /**
-     * Returns the tuple descriptor (schema) of the specified table
-     * @param tableid The id of the table, as specified by the DbFile.getId()
-     *     function passed to addTable
-     * @throws NoSuchElementException if the table doesn't exist
+     * 返回指定表的元组描述符（模式）
+     * 
+     * @param tableid 表的id，由addTable传递的DbFile.getId()函数指定
+     * @throws NoSuchElementException 如果表不存在
      */
     public TupleDesc getTupleDesc(int tableid) throws NoSuchElementException {
-        // some code goes here
+        // 这里填写一些代码
         return null;
     }
 
     /**
-     * Returns the DbFile that can be used to read the contents of the
-     * specified table.
-     * @param tableid The id of the table, as specified by the DbFile.getId()
-     *     function passed to addTable
+     * 返回可以用来读取指定表内容的DbFile。
+     * 
+     * @param tableid 表的id，由addTable传递的DbFile.getId()函数指定
      */
     public DbFile getDatabaseFile(int tableid) throws NoSuchElementException {
-        // some code goes here
+        // 这里填写一些代码
         return null;
     }
 
     public String getPrimaryKey(int tableid) {
-        // some code goes here
+        // 这里填写一些代码
         return null;
     }
 
     public Iterator<Integer> tableIdIterator() {
-        // some code goes here
+        // 这里填写一些代码
         return null;
     }
 
     public String getTableName(int id) {
-        // some code goes here
+        // 这里填写一些代码
         return null;
     }
-    
-    /** Delete all tables from the catalog */
+
+    /** 从目录中删除所有表 */
     public void clear() {
-        // some code goes here
+        // 这里填写一些代码
     }
-    
+
     /**
-     * Reads the schema from a file and creates the appropriate tables in the database.
+     * 从文件中读取模式并在数据库中创建相应的表。
+     * 
      * @param catalogFile
      */
     public void loadSchema(String catalogFile) {
         String line = "";
-        String baseFolder=new File(new File(catalogFile).getAbsolutePath()).getParent();
-        try {
-            BufferedReader br = new BufferedReader(new FileReader(new File(catalogFile)));
-            
+        String baseFolder = new File(new File(catalogFile).getAbsolutePath()).getParent();
+        try (BufferedReader br = new BufferedReader(new FileReader(new File(catalogFile)))) {
             while ((line = br.readLine()) != null) {
-                //assume line is of the format name (field type, field type, ...)
+                // assume line is of the format name (field type, field type, ...)
                 String name = line.substring(0, line.indexOf("(")).trim();
-                //System.out.println("TABLE NAME: " + name);
+                // System.out.println("TABLE NAME: " + name);
                 String fields = line.substring(line.indexOf("(") + 1, line.indexOf(")")).trim();
                 String[] els = fields.split(",");
                 ArrayList<String> names = new ArrayList<String>();
@@ -147,17 +141,16 @@ public class Catalog {
                 Type[] typeAr = types.toArray(new Type[0]);
                 String[] namesAr = names.toArray(new String[0]);
                 TupleDesc t = new TupleDesc(typeAr, namesAr);
-                HeapFile tabHf = new HeapFile(new File(baseFolder+"/"+name + ".dat"), t);
-                addTable(tabHf,name,primaryKey);
+                HeapFile tabHf = new HeapFile(new File(baseFolder + "/" + name + ".dat"), t);
+                addTable(tabHf, name, primaryKey);
                 System.out.println("Added table : " + name + " with schema " + t);
             }
         } catch (IOException e) {
             e.printStackTrace();
             System.exit(0);
         } catch (IndexOutOfBoundsException e) {
-            System.out.println ("Invalid catalog entry : " + line);
+            System.out.println("Invalid catalog entry : " + line);
             System.exit(0);
         }
     }
 }
-
