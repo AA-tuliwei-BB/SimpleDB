@@ -5,202 +5,207 @@ import java.io.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * BufferPool manages the reading and writing of pages into memory from
- * disk. Access methods call into it to retrieve pages, and it fetches
- * pages from the appropriate location.
+ * BufferPool 管理着从磁盘到内存中的页面读写操作。
+ * 访问方法调用它来检索页面，并且它从适当的位置获取页面。
  * <p>
- * The BufferPool is also responsible for locking;  when a transaction fetches
- * a page, BufferPool checks that the transaction has the appropriate
- * locks to read/write the page.
+ * BufferPool 也负责锁定；当一个事务获取一个页面时，BufferPool 会检查该事务是否有适当的
+ * 锁来读写页面。
  * 
- * @Threadsafe, all fields are final
+ * @Threadsafe , 所有字段都是final
  */
 public class BufferPool {
-    /** Bytes per page, including header. */
+    /** 每个页面的字节数，包括头部。 */
     private static final int PAGE_SIZE = 4096;
 
     private static int pageSize = PAGE_SIZE;
-    
-    /** Default number of pages passed to the constructor. This is used by
-    other classes. BufferPool should use the numPages argument to the
-    constructor instead. */
+
+    /**
+     * 传递给构造函数的默认页面数。这被其他类使用。
+     * BufferPool 应该使用构造函数中的 numPages 参数代替。
+     */
     public static final int DEFAULT_PAGES = 50;
 
+    private int numPages;
+
+    private ConcurrentHashMap<PageId, Page> pageMap;
+
     /**
-     * Creates a BufferPool that caches up to numPages pages.
+     * 创建一个最多缓存 numPages 个页面的 BufferPool。
      *
-     * @param numPages maximum number of pages in this buffer pool.
+     * @param numPages 这个缓冲池中的最大页面数。
      */
     public BufferPool(int numPages) {
-        // some code goes here
+        pageMap = new ConcurrentHashMap<>();
+        this.numPages = numPages;
     }
-    
+
     public static int getPageSize() {
-      return pageSize;
+        return pageSize;
     }
-    
-    // THIS FUNCTION SHOULD ONLY BE USED FOR TESTING!!
+
+    // 此函数仅供测试使用!!
     public static void setPageSize(int pageSize) {
-    	BufferPool.pageSize = pageSize;
+        BufferPool.pageSize = pageSize;
     }
-    
-    // THIS FUNCTION SHOULD ONLY BE USED FOR TESTING!!
+
+    // 此函数仅供测试使用!!
     public static void resetPageSize() {
-    	BufferPool.pageSize = PAGE_SIZE;
+        BufferPool.pageSize = PAGE_SIZE;
     }
 
     /**
-     * Retrieve the specified page with the associated permissions.
-     * Will acquire a lock and may block if that lock is held by another
-     * transaction.
+     * 根据相关权限检索指定的页面。
+     * 将获取一个锁，如果该锁被另一个事务持有，则可能会阻塞。
      * <p>
-     * The retrieved page should be looked up in the buffer pool.  If it
-     * is present, it should be returned.  If it is not present, it should
-     * be added to the buffer pool and returned.  If there is insufficient
-     * space in the buffer pool, an page should be evicted and the new page
-     * should be added in its place.
+     * 检索到的页面应该在缓冲池中查找。如果存在，应该返回。如果不存在，应该
+     * 加入到缓冲池中并返回。如果缓冲池中空间不足，应该逐出一个页面并将新页面
+     * 加入其位置。
      *
-     * @param tid the ID of the transaction requesting the page
-     * @param pid the ID of the requested page
-     * @param perm the requested permissions on the page
+     * @param tid  请求页面的事务的 ID
+     * @param pid  请求的页面的 ID
+     * @param perm 页面上请求的权限
      */
-    public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
-        throws TransactionAbortedException, DbException {
-        // some code goes here
-        return null;
+    public Page getPage(TransactionId tid, PageId pid, Permissions perm)
+            throws TransactionAbortedException, DbException {
+        Page page = pageMap.get(pid);
+        if (page == null) {
+            if (pageMap.size() >= numPages) {
+                throw new DbException("buffer pool full");
+            } else {
+                Catalog catalog = Database.getCatalog();
+                DbFile file = catalog.getDatabaseFile(pid.getTableId());
+                page = file.readPage(pid);
+                pageMap.put(pid, page);
+            }
+        }
+        return page;
     }
 
     /**
-     * Releases the lock on a page.
-     * Calling this is very risky, and may result in wrong behavior. Think hard
-     * about who needs to call this and why, and why they can run the risk of
-     * calling it.
+     * 释放页面上的锁。
+     * 调用这个是非常危险的，可能会导致错误的行为。仔细考虑谁需要调用这个以及为什么，
+     * 以及他们为什么可以承担调用它的风险。
      *
-     * @param tid the ID of the transaction requesting the unlock
-     * @param pid the ID of the page to unlock
+     * @param tid 请求解锁的事务的 ID
+     * @param pid 要解锁的页面的 ID
      */
-    public  void releasePage(TransactionId tid, PageId pid) {
-        // some code goes here
-        // not necessary for lab1|lab2
+    public void releasePage(TransactionId tid, PageId pid) {
+        // 一些代码在这里
+        // lab1|lab2 不需要
     }
 
     /**
-     * Release all locks associated with a given transaction.
+     * 释放与给定事务相关联的所有锁。
      *
-     * @param tid the ID of the transaction requesting the unlock
+     * @param tid 请求解锁的事务的 ID
      */
     public void transactionComplete(TransactionId tid) throws IOException {
-        // some code goes here
-        // not necessary for lab1|lab2
+        // 一些代码在这里
+        // lab1|lab2 不需要
     }
 
-    /** Return true if the specified transaction has a lock on the specified page */
+    /** 如果指定事务在指定页面上有锁，则返回 true */
     public boolean holdsLock(TransactionId tid, PageId p) {
-        // some code goes here
-        // not necessary for lab1|lab2
+        // 一些代码在这里
+        // lab1|lab2 不需要
         return false;
     }
 
     /**
-     * Commit or abort a given transaction; release all locks associated to
-     * the transaction.
+     * 提交或中止给定事务；释放事务相关的所有锁。
      *
-     * @param tid the ID of the transaction requesting the unlock
-     * @param commit a flag indicating whether we should commit or abort
+     * @param tid    请求解锁的事务的 ID
+     * @param commit 标志是否应该提交或中止
      */
     public void transactionComplete(TransactionId tid, boolean commit)
-        throws IOException {
-        // some code goes here
-        // not necessary for lab1|lab2
+            throws IOException {
+        // 一些代码在这里
+        // lab1|lab2 不需要
     }
 
     /**
-     * Add a tuple to the specified table on behalf of transaction tid.  Will
-     * acquire a write lock on the page the tuple is added to and any other 
-     * pages that are updated (Lock acquisition is not needed for lab2). 
-     * May block if the lock(s) cannot be acquired.
+     * 代表事务 tid 向指定表中添加一个元组。将获取页面上添加元组的写锁以及任何
+     * 其他更新的页面的写锁（lab2 不需要锁获取）。
+     * 如果无法获取锁，则可能会阻塞。
      * 
-     * Marks any pages that were dirtied by the operation as dirty by calling
-     * their markDirty bit, and adds versions of any pages that have 
-     * been dirtied to the cache (replacing any existing versions of those pages) so 
-     * that future requests see up-to-date pages. 
+     * 通过调用它们的 markDirty 位，将操作弄脏的任何页面标记为脏，并将
+     * 弄脏的任何页面的版本添加到缓存中（替换这些页面的任何现有版本），
+     * 以便未来的请求看到最新的页面。
      *
-     * @param tid the transaction adding the tuple
-     * @param tableId the table to add the tuple to
-     * @param t the tuple to add
+     * @param tid     添加元组的事务
+     * @param tableId 要添加元组的表
+     * @param t       要添加的元组
      */
     public void insertTuple(TransactionId tid, int tableId, Tuple t)
-        throws DbException, IOException, TransactionAbortedException {
-        // some code goes here
-        // not necessary for lab1
+            throws DbException, IOException, TransactionAbortedException {
+        // 一些代码在这里
+        // lab1 不需要
     }
 
     /**
-     * Remove the specified tuple from the buffer pool.
-     * Will acquire a write lock on the page the tuple is removed from and any
-     * other pages that are updated. May block if the lock(s) cannot be acquired.
+     * 从缓冲池中删除指定的元组。
+     * 将获取元组被删除的页面上的写锁和任何其他更新的页面的写锁。
+     * 如果无法获取锁，则可能会阻塞。
      *
-     * Marks any pages that were dirtied by the operation as dirty by calling
-     * their markDirty bit, and adds versions of any pages that have 
-     * been dirtied to the cache (replacing any existing versions of those pages) so 
-     * that future requests see up-to-date pages. 
+     * 通过调用它们的 markDirty 位，将操作弄脏的任何页面标记为脏，并将
+     * 弄脏的任何页面的版本添加到缓存中（替换这些页面的任何现有版本），
+     * 以便未来的请求看到最新的页面。
      *
-     * @param tid the transaction deleting the tuple.
-     * @param t the tuple to delete
+     * @param tid 删除元组的事务。
+     * @param t   要删除的元组
      */
-    public  void deleteTuple(TransactionId tid, Tuple t)
-        throws DbException, IOException, TransactionAbortedException {
-        // some code goes here
-        // not necessary for lab1
+    public void deleteTuple(TransactionId tid, Tuple t)
+            throws DbException, IOException, TransactionAbortedException {
+        // 一些代码在这里
+        // lab1 不需要
     }
 
     /**
-     * Flush all dirty pages to disk.
-     * NB: Be careful using this routine -- it writes dirty data to disk so will
-     *     break simpledb if running in NO STEAL mode.
+     * 将所有脏页面刷新到磁盘。
+     * 注意：小心使用这个例程——它将脏数据写入磁盘，因此如果在 NO STEAL 模式下运行，将会破坏 simpledb。
      */
     public synchronized void flushAllPages() throws IOException {
-        // some code goes here
-        // not necessary for lab1
+        // 一些代码在这里
+        // lab1 不需要
 
     }
 
-    /** Remove the specific page id from the buffer pool.
-        Needed by the recovery manager to ensure that the
-        buffer pool doesn't keep a rolled back page in its
-        cache.
-        
-        Also used by B+ tree files to ensure that deleted pages
-        are removed from the cache so they can be reused safely
-    */
+    /**
+     * 从缓冲池中移除特定的页面 id。
+     * 恢复管理器需要此操作以确保缓冲池不会在其缓存中保留已回滚的页面。
+     * 
+     * B+树文件也使用它来确保删除的页面从缓存中移除，以便可以安全地重用这些页面。
+     */
     public synchronized void discardPage(PageId pid) {
-        // some code goes here
-        // not necessary for lab1
+        // 一些代码在这里
+        // lab1 不需要
     }
 
     /**
-     * Flushes a certain page to disk
-     * @param pid an ID indicating the page to flush
+     * 将某个特定页面刷新到磁盘
+     * 
+     * @param pid 表示要刷新的页面的 ID
      */
-    private synchronized  void flushPage(PageId pid) throws IOException {
-        // some code goes here
-        // not necessary for lab1
-    }
-
-    /** Write all pages of the specified transaction to disk.
-     */
-    public synchronized  void flushPages(TransactionId tid) throws IOException {
-        // some code goes here
-        // not necessary for lab1|lab2
+    private synchronized void flushPage(PageId pid) throws IOException {
+        // 一些代码在这里
+        // lab1 不需要
     }
 
     /**
-     * Discards a page from the buffer pool.
-     * Flushes the page to disk to ensure dirty pages are updated on disk.
+     * 将指定事务的所有页面写入磁盘。
      */
-    private synchronized  void evictPage() throws DbException {
-        // some code goes here
-        // not necessary for lab1
+    public synchronized void flushPages(TransactionId tid) throws IOException {
+        // 一些代码在这里
+        // lab1|lab2 不需要
+    }
+
+    /**
+     * 从缓冲池中丢弃一个页面。
+     * 将页面刷新到磁盘以确保脏页面在磁盘上更新。
+     */
+    private synchronized void evictPage() throws DbException {
+        // 一些代码在这里
+        // lab1 不需要
     }
 
 }
