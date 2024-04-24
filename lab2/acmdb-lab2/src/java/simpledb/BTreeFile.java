@@ -341,10 +341,10 @@ public class BTreeFile implements DbFile {
 		Field middleKey = middleKeyEntry.getKey();
 		newPage.deleteKeyAndRightChild(middleKeyEntry);
 		BTreeEntry entry = new BTreeEntry(middleKey, newPage.getId(), page.getId());
-		Field pageKey = page.iterator().next().getKey();
 		BTreeInternalPage parentPage = getParentWithEmptySlots(tid, dirtypages, page.getParentId(), field);
 		parentPage.insertEntry(entry);
-		updateParentPointers(tid, dirtypages, (BTreeInternalPage) parentPage);
+		updateParentPointers(tid, dirtypages, parentPage);
+		updateParentPointers(tid, dirtypages, newPage);
 		return field.compare(Op.GREATER_THAN, middleKey) ?  page : newPage;
 	}
 	
