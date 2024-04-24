@@ -70,13 +70,12 @@ public class BufferPool {
         Page page = pageMap.get(pid);
         if (page == null) {
             if (pageMap.size() >= numPages) {
-                throw new DbException("buffer pool full");
-            } else {
-                Catalog catalog = Database.getCatalog();
-                DbFile file = catalog.getDatabaseFile(pid.getTableId());
-                page = file.readPage(pid);
-                pageMap.put(pid, page);
+                evictPage();
             }
+            Catalog catalog = Database.getCatalog();
+            DbFile file = catalog.getDatabaseFile(pid.getTableId());
+            page = file.readPage(pid);
+            pageMap.put(pid, page);
         }
         return page;
     }
@@ -165,9 +164,9 @@ public class BufferPool {
      * 注意：小心使用这个例程——它将脏数据写入磁盘，因此如果在 NO STEAL 模式下运行，将会破坏 simpledb。
      */
     public synchronized void flushAllPages() throws IOException {
-        // 一些代码在这里
-        // lab1 不需要
-
+        for (PageId pid : pageMap.keySet()) {
+            flushPage(pid);
+        }
     }
 
     /**
@@ -179,6 +178,14 @@ public class BufferPool {
     public synchronized void discardPage(PageId pid) {
         // 一些代码在这里
         // lab1 不需要
+        if (pageMap.containsKey(pid)) {
+            try {
+                flushPage(pid);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            pageMap.remove(pid);
+        }
     }
 
     /**
@@ -189,6 +196,15 @@ public class BufferPool {
     private synchronized void flushPage(PageId pid) throws IOException {
         // 一些代码在这里
         // lab1 不需要
+        if (pageMap.containsKey(pid)) {
+            Page page = pageMap.get(pid);
+            if (page.isDirty() != null) {
+                Catalog catalog = Database.getCatalog();
+                DbFile file = catalog.getDatabaseFile(pid.getTableId());
+                file.writePage(page);
+                page.markDirty(false, null);
+            }
+        }
     }
 
     /**
@@ -206,6 +222,15 @@ public class BufferPool {
     private synchronized void evictPage() throws DbException {
         // 一些代码在这里
         // lab1 不需要
+        for (PageId pid : pageMap.keySet()) {
+            try {
+                flushPage(pid);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            pageMap.remove(pid);
+            return;
+        }
     }
 
 }
