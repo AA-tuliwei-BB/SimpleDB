@@ -17,6 +17,8 @@ public class HeapPage implements Page {
     final byte header[];
     final Tuple tuples[];
     final int numSlots;
+    private boolean isDirty = false;
+    private TransactionId dirtier = null;
 
     byte[] oldData;
     private final Byte oldDataLock = new Byte((byte) 0);
@@ -239,6 +241,7 @@ public class HeapPage implements Page {
     public void deleteTuple(Tuple t) throws DbException {
         // 一些代码在这里
         // lab1 不需要
+        markSlotUsed(t.getRecordId().tupleno(), false);
     }
 
     /**
@@ -250,6 +253,15 @@ public class HeapPage implements Page {
     public void insertTuple(Tuple t) throws DbException {
         // 一些代码在这里
         // lab1 不需要
+        for (int i = 0; i < numSlots; ++i) {
+            if (!isSlotUsed(i)) {
+                tuples[i] = t;
+                markSlotUsed(i, true);
+                t.setRecordId(new RecordId(pid, i));
+                return;
+            }
+        }
+        throw new DbException("no empty slot");
     }
 
     /**
@@ -258,6 +270,10 @@ public class HeapPage implements Page {
     public void markDirty(boolean dirty, TransactionId tid) {
         // 一些代码在这里
         // lab1 不需要
+        isDirty = dirty;
+        if (dirty) {
+            dirtier = tid;
+        }
     }
 
     /**
@@ -266,7 +282,11 @@ public class HeapPage implements Page {
     public TransactionId isDirty() {
         // 一些代码在这里
         // lab1 不需要
-        return null;
+        if (isDirty) {
+            return dirtier;
+        } else {
+            return null;
+        }
     }
 
     /**
