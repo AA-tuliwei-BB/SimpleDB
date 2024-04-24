@@ -112,7 +112,10 @@ public class HeapFile implements DbFile {
     // 见DbFile.java中的javadocs
     public DbFileIterator iterator(TransactionId tid) {
         return new DbFileIterator() {
-            private boolean closed;
+            private boolean closed = true;
+            private int nextPage = 0;
+            private HeapPage page;
+            private Iterable<Tuple> tuples;
 
             /**
              * Opens the iterator
@@ -120,7 +123,10 @@ public class HeapFile implements DbFile {
              * @throws DbException when there are problems opening/accessing the database.
              */
             public void open() throws DbException, TransactionAbortedException {
-
+                closed = false;
+                nextPage = 0;
+                page = null;
+                tuples = null;
             }
 
             /**
@@ -128,7 +134,18 @@ public class HeapFile implements DbFile {
              *         iterator isn't open.
              */
             public boolean hasNext() throws DbException, TransactionAbortedException {
-                return false;
+                if (closed)
+                    return false;
+                while (tuples == null || tuples.iterator().hasNext() == false) {
+                    if (nextPage >= numPages()) {
+                        return false;
+                    } else {
+                        page = (HeapPage) Database.getBufferPool().getPage(tid, new HeapPageId(getId(), nextPage), Permissions.READ_ONLY);
+                        tuples = page.iterator();
+                        nextPage++;
+                    }
+                }
+                return true;
             }
 
             /**
@@ -139,7 +156,10 @@ public class HeapFile implements DbFile {
              * @throws NoSuchElementException if there are no more tuples
              */
             public Tuple next() throws DbException, TransactionAbortedException, NoSuchElementException {
-                return null;
+                if (!hasNext()) {
+                    throw new NoSuchElementException();
+                }
+                return tuples.iterator().next();
             }
 
             /**
@@ -148,14 +168,18 @@ public class HeapFile implements DbFile {
              * @throws DbException When rewind is unsupported.
              */
             public void rewind() throws DbException, TransactionAbortedException {
-
+                nextPage = 0;
+                tuples = null;
+                page = null;
             }
 
             /**
              * Closes the iterator.
              */
             public void close() {
-
+                closed = true;
+                page = null;
+                tuples = null;
             }
         };
     }

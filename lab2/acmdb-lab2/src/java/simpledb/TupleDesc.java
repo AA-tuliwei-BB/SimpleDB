@@ -117,7 +117,7 @@ public class TupleDesc implements Serializable {
      */
     public int fieldNameToIndex(String name) throws NoSuchElementException {
         for (int i = 0; i < List.size(); ++i) {
-            if (List.get(i).fieldName == name) {
+            if (List.get(i).fieldName.equals(name)) {
                 return i;
             }
         }
