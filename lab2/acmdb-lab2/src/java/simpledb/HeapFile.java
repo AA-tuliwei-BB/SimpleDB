@@ -115,7 +115,7 @@ public class HeapFile implements DbFile {
             private boolean closed = true;
             private int nextPage = 0;
             private HeapPage page;
-            private Iterable<Tuple> tuples;
+            private Iterator<Tuple> tuples;
 
             /**
              * Opens the iterator
@@ -136,7 +136,7 @@ public class HeapFile implements DbFile {
             public boolean hasNext() throws DbException, TransactionAbortedException {
                 if (closed)
                     return false;
-                while (tuples == null || tuples.iterator().hasNext() == false) {
+                while (tuples == null || tuples.hasNext() == false) {
                     if (nextPage >= numPages()) {
                         return false;
                     } else {
@@ -159,7 +159,7 @@ public class HeapFile implements DbFile {
                 if (!hasNext()) {
                     throw new NoSuchElementException();
                 }
-                return tuples.iterator().next();
+                return tuples.next();
             }
 
             /**
