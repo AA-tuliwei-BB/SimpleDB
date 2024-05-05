@@ -241,7 +241,16 @@ public class HeapPage implements Page {
     public void deleteTuple(Tuple t) throws DbException {
         // 一些代码在这里
         // lab1 不需要
-        markSlotUsed(t.getRecordId().tupleno(), false);
+        RecordId rid = t.getRecordId();
+        if (pid.equals(rid.getPageId())) {
+            if (isSlotUsed(rid.tupleno())) {
+                markSlotUsed(rid.tupleno(), false);
+            } else {
+                throw new DbException("tuple slot is empty");
+            }
+        } else {
+            throw new DbException("tuple is not on this page");
+        }
     }
 
     /**

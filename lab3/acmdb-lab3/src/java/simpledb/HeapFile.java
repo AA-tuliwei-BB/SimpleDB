@@ -1,5 +1,7 @@
 package simpledb;
 
+import static org.junit.Assert.assertArrayEquals;
+
 import java.io.*;
 import java.util.*;
 
@@ -82,7 +84,11 @@ public class HeapFile implements DbFile {
     // 见DbFile.java中的javadocs
     public void writePage(Page page) throws IOException {
         // 一些代码在这里
-        // lab1 不需要
+        if (page.getId().getTableId() != this.getId()) {
+            throw new IOException("table id mismatch");
+        }
+        raf.seek(BufferPool.getPageSize() * page.getId().pageNumber());
+        raf.write(page.getPageData());
     }
 
     /**
@@ -97,16 +103,34 @@ public class HeapFile implements DbFile {
     public ArrayList<Page> insertTuple(TransactionId tid, Tuple t)
             throws DbException, IOException, TransactionAbortedException {
         // 一些代码在这里
-        return null;
-        // lab1 不需要
+        ArrayList<Page> affectedPages = new ArrayList<>();
+        for (int i = 0; i < numPages(); i++) {
+            HeapPageId pid = new HeapPageId(getId(), i);
+            HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_WRITE);
+            if (page.getNumEmptySlots() > 0) {
+                page.insertTuple(t);
+                affectedPages.add(page);
+                return affectedPages;
+            }
+        }
+        HeapPageId pid = new HeapPageId(getId(), numPages());
+        HeapPage page = new HeapPage(pid, HeapPage.createEmptyPageData());
+        page.insertTuple(t);
+        writePage(page);
+        affectedPages.add(page);
+        return affectedPages;
     }
 
     // 见DbFile.java中的javadocs
     public ArrayList<Page> deleteTuple(TransactionId tid, Tuple t) throws DbException,
             TransactionAbortedException {
         // 一些代码在这里
-        return null;
-        // lab1 不需要
+        ArrayList<Page> affectedPages = new ArrayList<>();
+        RecordId rid = t.getRecordId();
+        HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, rid.getPageId(), Permissions.READ_WRITE);
+        page.deleteTuple(t);
+        affectedPages.add(page);
+        return affectedPages;
     }
 
     // 见DbFile.java中的javadocs

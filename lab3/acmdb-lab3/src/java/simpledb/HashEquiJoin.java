@@ -9,6 +9,14 @@ public class HashEquiJoin extends Operator {
 
     private static final long serialVersionUID = 1L;
 
+    private JoinPredicate p;
+    private DbIterator child1;
+    private DbIterator child2;
+    private TupleDesc td;
+    private Map<Field, List<Tuple>> hashTable = new HashMap<Field, List<Tuple>>();
+    private int childInTable = 1;
+    private Tuple currentTuple;
+
     /**
      * Constructor. Accepts to children to join and the predicate to join them
      * on
@@ -22,41 +30,73 @@ public class HashEquiJoin extends Operator {
      */
     public HashEquiJoin(JoinPredicate p, DbIterator child1, DbIterator child2) {
         // some code goes here
+        this.p = p;
+        this.child1 = child1;
+        this.child2 = child2;
+        this.td = TupleDesc.merge(child1.getTupleDesc(), child2.getTupleDesc());
     }
 
     public JoinPredicate getJoinPredicate() {
         // some code goes here
-        return null;
+        return this.p;
     }
 
     public TupleDesc getTupleDesc() {
         // some code goes here
-        return null;
+        return this.td;
     }
     
     public String getJoinField1Name()
     {
         // some code goes here
-	return null;
+        return this.child1.getTupleDesc().getFieldName(this.p.getField1());
     }
 
     public String getJoinField2Name()
     {
         // some code goes here
-        return null;
+        return this.child2.getTupleDesc().getFieldName(this.p.getField2());
     }
     
     public void open() throws DbException, NoSuchElementException,
             TransactionAbortedException {
         // some code goes here
+        this.child1.open();
+        this.child2.open();
+        super.open();
+        hashTable.clear();
+        DbIterator child = childInTable == 1 ? child1 : child2;
+        while (child.hasNext()) {
+            Tuple t = child.next();
+            Field f = t.getField(childInTable == 1 ? p.getField1() : p.getField2());
+            if (!hashTable.containsKey(f)) {
+                hashTable.put(f, new ArrayList<Tuple>());
+            }
+            hashTable.get(f).add(t);
+        }
+        currentTuple = null;
+        child.close();
     }
 
     public void close() {
         // some code goes here
+        if (childInTable == 1) {
+            this.child2.close();
+        } else {
+            this.child1.close();
+        }
+        super.close();
+        hashTable.clear();
     }
 
     public void rewind() throws DbException, TransactionAbortedException {
         // some code goes here
+        if (childInTable == 1) {
+            this.child2.rewind();
+        } else {
+            this.child1.rewind();
+        }
+        currentTuple = null;
     }
 
     transient Iterator<Tuple> listIt = null;
@@ -81,18 +121,50 @@ public class HashEquiJoin extends Operator {
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
         // some code goes here
-        return null;
+        DbIterator anotherChild = childInTable == 1 ? child2 : child1;
+        if (currentTuple != null && listIt != null && listIt.hasNext()) {
+            Tuple t1, t2;
+            if (childInTable == 1) {
+                t1 = listIt.next();
+                t2 = currentTuple;
+            } else {
+                t1 = currentTuple;
+                t2 = listIt.next();
+            }
+            Tuple t = new Tuple(td);
+            int i = 0;
+            for (int j = 0; j < t1.getTupleDesc().numFields(); j++) {
+                t.setField(i++, t1.getField(j));
+            }
+            for (int j = 0; j < t2.getTupleDesc().numFields(); j++) {
+                t.setField(i++, t2.getField(j));
+            }
+            return t;
+        } else if (anotherChild.hasNext()) {
+            currentTuple = anotherChild.next();
+            Field f = currentTuple.getField(childInTable == 1 ? p.getField2() : p.getField1());
+            if (hashTable.containsKey(f)) {
+                listIt = hashTable.get(f).iterator();
+            } else {
+                listIt = null;
+            }
+            return fetchNext();
+        } else {
+            return null;
+        }
     }
 
     @Override
     public DbIterator[] getChildren() {
         // some code goes here
-        return null;
+        return new DbIterator[] {this.child1, this.child2};
     }
 
     @Override
     public void setChildren(DbIterator[] children) {
         // some code goes here
+        this.child1 = children[0];
+        this.child2 = children[1];
     }
     
 }

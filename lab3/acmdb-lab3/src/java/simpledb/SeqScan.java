@@ -112,7 +112,9 @@ public class SeqScan implements DbIterator {
 
     public void close() {
         // some code goes here
-        iterator.close();
+        if (iterator != null) {
+            iterator.close();
+        }
         iterator = null;
     }
 
