@@ -78,7 +78,7 @@ public class IntHistogram {
                 if (v < min || v > max) {
                     selectivity = 1.0;
                 } else {
-                    selectivity = 1.0 - (double) histogram[bucket] / (right - left);
+                    selectivity = 1.0 - (double) histogram[bucket] / (right - left) / ntups;
                 }
                 break;
             case GREATER_THAN:
