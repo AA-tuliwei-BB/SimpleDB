@@ -114,26 +114,28 @@ public class Join extends Operator {
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
         // some code goes here
-        if (t1 != null && this.child2.hasNext()) {
-            t2 = this.child2.next();
-            if (!this.p.filter(t1, t2)) {
-                return fetchNext();
+        while (true) {
+            if (t1 != null && this.child2.hasNext()) {
+                t2 = this.child2.next();
+                if (!this.p.filter(t1, t2)) {
+                    continue;
+                }
+                Tuple t = new Tuple(this.td);
+                int i = 0;
+                for (int j = 0; j < t1.getTupleDesc().numFields(); j++) {
+                    t.setField(i++, t1.getField(j));
+                }
+                for (int j = 0; j < t2.getTupleDesc().numFields(); j++) {
+                    t.setField(i++, t2.getField(j));
+                }
+                return t;
+            } else if (this.child1.hasNext()) {
+                t1 = this.child1.next();
+                this.child2.rewind();
+                continue;
+            } else {
+                return null;
             }
-            Tuple t = new Tuple(this.td);
-            int i = 0;
-            for (int j = 0; j < t1.getTupleDesc().numFields(); j++) {
-                t.setField(i++, t1.getField(j));
-            }
-            for (int j = 0; j < t2.getTupleDesc().numFields(); j++) {
-                t.setField(i++, t2.getField(j));
-            }
-            return t;
-        } else if (this.child1.hasNext()) {
-            t1 = this.child1.next();
-            this.child2.rewind();
-            return fetchNext();
-        } else {
-            return null;
         }
     }
 

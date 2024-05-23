@@ -231,9 +231,8 @@ public class JoinOptimizer {
         //Not necessary for labs 1--3
 
         // some code goes here
+        System.out.println("JoinOptimizer.orderJoins");
         PlanCache pc = new PlanCache();
-        Set<LogicalJoinNode> joins = new HashSet<LogicalJoinNode>(this.joins);
-        Vector<LogicalJoinNode> bestPlan = null;
 
         for (int i = 1; i <= joins.size(); i++) {
             Set<Set<LogicalJoinNode>> subsets = enumerateSubsets(this.joins, i);
@@ -244,19 +243,15 @@ public class JoinOptimizer {
                     subsetCopy.remove(j);
                     CostCard cc = computeCostAndCardOfSubplan(stats,
                             filterSelectivities, j, subset, bestCost, pc);
-                    if (cc != null) {
+                    if (cc != null && cc.cost < bestCost) {
                         pc.addPlan(subset, cc.cost, cc.card, cc.plan);
-                        if (cc.cost < bestCost) {
-                            bestCost = cc.cost;
-                            if (i == joins.size()) {
-                                bestPlan = cc.plan;
-                            }
-                        }
+                        bestCost = cc.cost;
                     }
                 }
             }
         }
 
+        Vector<LogicalJoinNode> bestPlan = pc.getOrder(new HashSet<>(this.joins));
         if (explain) {
             printJoins(bestPlan, pc, stats, filterSelectivities);
         }
