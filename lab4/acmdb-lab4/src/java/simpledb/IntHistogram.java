@@ -45,7 +45,20 @@ public class IntHistogram {
      */
     public void addValue(int v) {
         // some code goes here
-        int bucket = (v - min) * histogram.length / (max - min + 1);
+        int bucket = (int) (((long) (v - min)) * histogram.length / (max - min + 1));
+        if (bucket < 0) {
+            // get a error string include v min length min and max
+            StringBuilder sb = new StringBuilder();
+            sb.append("v: ");
+            sb.append(v);
+            sb.append(" min: ");
+            sb.append(min);
+            sb.append(" max: ");
+            sb.append(max);
+            sb.append(" length: ");
+            sb.append(histogram.length);
+            throw new IllegalArgumentException(sb.toString());
+        }
         histogram[bucket]++;
         ntups++;
     }

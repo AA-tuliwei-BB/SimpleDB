@@ -131,16 +131,14 @@ public class TableStats {
                 }
             }
 
-            for (int i = 0; i < td.numFields(); i++) {
-                if (td.getFieldType(i) == Type.INT_TYPE) {
-                    histograms[i] = new IntHistogram(NUM_HIST_BINS, min[i], max[i]);
-                }
-            }
             it.rewind();
             while (it.hasNext()) {
                 Tuple tuple = it.next();
                 for (int i = 0; i < td.numFields(); i++) {
                     if (td.getFieldType(i) == Type.INT_TYPE) {
+                        if (histograms[i] == null) {
+                            histograms[i] = new IntHistogram(NUM_HIST_BINS, min[i], max[i]);
+                        }
                         ((IntHistogram) histograms[i]).addValue(((IntField) tuple.getField(i)).getValue());
                     }
                 }

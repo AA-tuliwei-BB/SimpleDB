@@ -111,7 +111,7 @@ public class JoinOptimizer {
             // HINT: You may need to use the variable "j" if you implemented
             // a join algorithm that's more complicated than a basic
             // nested-loops join.
-            return -1.0;
+            return cost1 + cost2 + (cost1 + card1 * cost2);
         }
     }
 
@@ -157,7 +157,18 @@ public class JoinOptimizer {
             Map<String, Integer> tableAliasToId) {
         int card = 1;
         // some code goes here
-        return card <= 0 ? 1 : card;
+        if (t1pkey) {
+            card = card2;
+        } else if (t2pkey) {
+            card = card1;
+        } else {
+            if (joinOp == Predicate.Op.EQUALS) {
+                card = Math.max(card1, card2);
+            } else {
+                card = (int) (card1 * card2 * 0.3);
+            }
+        }
+        return card;
     }
 
     /**
@@ -220,8 +231,37 @@ public class JoinOptimizer {
         //Not necessary for labs 1--3
 
         // some code goes here
-        //Replace the following
-        return joins;
+        PlanCache pc = new PlanCache();
+        Set<LogicalJoinNode> joins = new HashSet<LogicalJoinNode>(this.joins);
+        Vector<LogicalJoinNode> bestPlan = null;
+
+        for (int i = 1; i <= joins.size(); i++) {
+            Set<Set<LogicalJoinNode>> subsets = enumerateSubsets(this.joins, i);
+            for (Set<LogicalJoinNode> subset : subsets) {
+                double bestCost = Double.MAX_VALUE;
+                for (LogicalJoinNode j : subset) {
+                    Set<LogicalJoinNode> subsetCopy = new HashSet<LogicalJoinNode>(subset);
+                    subsetCopy.remove(j);
+                    CostCard cc = computeCostAndCardOfSubplan(stats,
+                            filterSelectivities, j, subset, bestCost, pc);
+                    if (cc != null) {
+                        pc.addPlan(subset, cc.cost, cc.card, cc.plan);
+                        if (cc.cost < bestCost) {
+                            bestCost = cc.cost;
+                            if (i == joins.size()) {
+                                bestPlan = cc.plan;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (explain) {
+            printJoins(bestPlan, pc, stats, filterSelectivities);
+        }
+
+        return bestPlan;
     }
 
     // ===================== Private Methods =================================
