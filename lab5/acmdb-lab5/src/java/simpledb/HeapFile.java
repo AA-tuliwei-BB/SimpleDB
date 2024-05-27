@@ -104,21 +104,28 @@ public class HeapFile implements DbFile {
             throws DbException, IOException, TransactionAbortedException {
         // 一些代码在这里
         ArrayList<Page> affectedPages = new ArrayList<>();
+        // 不加 i < numPages() 了是因为将创建新页的任务放在了Bufferpool中以保证事务的正确性
         for (int i = 0; i < numPages(); i++) {
             HeapPageId pid = new HeapPageId(getId(), i);
             HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_WRITE);
             if (page.getNumEmptySlots() > 0) {
+                // Database.getBufferPool().upgradeToWriteLock(tid, pid);
                 page.insertTuple(t);
                 affectedPages.add(page);
                 return affectedPages;
+            } else {
+                Database.getBufferPool().releasePage(tid, pid);
             }
         }
-        HeapPageId pid = new HeapPageId(getId(), numPages());
-        HeapPage page = new HeapPage(pid, HeapPage.createEmptyPageData());
-        page.insertTuple(t);
-        writePage(page);
-        affectedPages.add(page);
-        return affectedPages;
+        synchronized (this) {
+            HeapPageId pid = new HeapPageId(getId(), numPages());
+            HeapPage page = new HeapPage(pid, HeapPage.createEmptyPageData());
+            writePage(page);
+            page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_WRITE);
+            page.insertTuple(t);
+            affectedPages.add(page);
+            return affectedPages;
+        }
     }
 
     // 见DbFile.java中的javadocs

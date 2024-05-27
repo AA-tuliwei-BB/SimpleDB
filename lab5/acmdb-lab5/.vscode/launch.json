@@ -1,0 +1,48 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Current File",
+            "request": "launch",
+            "mainClass": "${file}"
+        },
+        {
+            "type": "java",
+            "name": "LogicalPlan",
+            "request": "launch",
+            "mainClass": "simpledb.LogicalPlan",
+            "projectName": "simpledb"
+        },
+        {
+            "type": "java",
+            "name": "Parser",
+            "request": "launch",
+            "mainClass": "simpledb.Parser",
+            "projectName": "simpledb"
+        },
+        {
+            "type": "java",
+            "name": "SimpleDb",
+            "request": "launch",
+            "mainClass": "simpledb.SimpleDb",
+            "projectName": "simpledb"
+        },
+        {
+            "type": "java",
+            "name": "Debug Ant Test",
+            "request": "launch",
+            "mainClass": "org.apache.tools.ant.launch.Launcher",
+            "args": [
+                "test"
+            ],
+            "vmArgs": [
+                "-Xdebug",
+                "-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=5005"
+            ]
+        }
+    ]
+}

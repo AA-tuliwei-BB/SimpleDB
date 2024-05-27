@@ -1,8 +1,12 @@
 package simpledb;
 
 import java.io.*;
-import java.util.ArrayList;
+import java.util.*;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * BufferPool 管理着从磁盘到内存中的页面读写操作。
@@ -28,6 +32,208 @@ public class BufferPool {
     private int numPages;
 
     private ConcurrentHashMap<PageId, Page> pageMap;
+    private ConcurrentSkipListSet<PageId> pagesNotLocked;
+    private PageLock pageLock;
+
+    private class PageLock {
+        private ConcurrentHashMap<PageId, PageReadWriteLock> lockMap;
+        private ConcurrentHashMap<TransactionId, Set<PageId>> tidMap;
+        private ConcurrentHashMap<TransactionId, ConcurrentHashMap<PageId, Permissions>> permMap;
+
+        private class PageReadWriteLock {
+            private SimpleMutex lock;
+            private SimpleMutex rlock;
+            private SimpleMutex wlock;
+            private Semaphore writeLock;
+            private int readCount;
+            private ConcurrentHashMap<TransactionId, Integer> tidLock;
+            // static final int UNLOCK = 0;
+            static final int READ_LOCK = 1;
+            static final int WRITE_LOCK = -1;
+
+            private class SimpleMutex {
+                private Semaphore lock;
+
+                public SimpleMutex() {
+                    lock = new Semaphore(1);
+                }
+
+                public void lock() {
+                    try {
+                        lock.acquire();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+
+                public void unlock() {
+                    lock.release();
+                }
+            }
+
+            public PageReadWriteLock() {
+                rlock = new SimpleMutex();
+                wlock = new SimpleMutex();
+                lock = new SimpleMutex();
+                writeLock = new Semaphore(1);
+                readCount = 0;
+                tidLock = new ConcurrentHashMap<>();
+            }
+
+            public void waitReadLock(TransactionId tid) {
+                wlock.lock();
+                rlock.lock();
+                if (tidLock.containsKey(tid) && tidLock.get(tid) == WRITE_LOCK) {
+                    wlock.unlock();
+                    rlock.unlock();
+                    return;
+                }
+                wlock.unlock();
+                lock.lock();
+                if (readCount == 0) {
+                    try {
+                        writeLock.acquire();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+                readCount++;
+                // tidLock[tid]加一
+                tidLock.merge(tid, 1, Integer::sum);
+                rlock.unlock();
+                lock.unlock();
+            }
+
+            public void waitWriteLock(TransactionId tid) {
+                rlock.lock();
+                wlock.lock();
+                if (tidLock.containsKey(tid) && tidLock.get(tid).equals(WRITE_LOCK)) {
+                    rlock.unlock();
+                    wlock.unlock();
+                    return;
+                }
+                rlock.unlock();
+                lock.lock();
+                rlock.lock();
+                if (tidLock.containsKey(tid)) {
+                    if (tidLock.get(tid) == WRITE_LOCK) {
+                        rlock.unlock();
+                        return;
+                    }
+                    if (tidLock.get(tid) == READ_LOCK) {
+                        readCount--;
+                        if (readCount == 0) {
+                            tidLock.put(tid, WRITE_LOCK);
+                            rlock.unlock();
+                            wlock.unlock();
+                            return;
+                        }
+                        tidLock.remove(tid);
+                    }
+                }
+                rlock.unlock();
+                try {
+                    writeLock.acquire();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                rlock.lock();
+                tidLock.put(tid, WRITE_LOCK);
+                rlock.unlock();
+                wlock.unlock();
+            }
+
+            public void releaseLock(TransactionId tid) {
+                rlock.lock();
+                if (tidLock.get(tid) >= READ_LOCK) {
+                    readCount--;
+                    tidLock.merge(tid, -1, Integer::sum);
+                    if (tidLock.get(tid) == 0) {
+                        tidLock.remove(tid);
+                    }
+                    if (readCount == 0) {
+                        writeLock.release();
+                    }
+                } else if (tidLock.get(tid) == WRITE_LOCK) {
+                    writeLock.release();
+                    tidLock.remove(tid);
+                    lock.unlock();
+                }
+                rlock.unlock();
+            }
+        }
+
+        private PageLock() {
+            lockMap = new ConcurrentHashMap<>();
+            tidMap = new ConcurrentHashMap<>();
+            permMap = new ConcurrentHashMap<>();
+        }
+
+        private PageReadWriteLock getLock(PageId pid) {
+            if (!lockMap.containsKey(pid)) {
+                lockMap.put(pid, new PageReadWriteLock());
+            }
+            return lockMap.get(pid);
+        }
+
+        // private boolean tryLock(PageId pid, Permissions perm) {
+        //     PageReadWriteLock lock = getLock(pid);
+        //     if (perm == Permissions.READ_ONLY) {
+        //         return lock.readLock().tryLock();
+        //     } else {
+        //         return lock.writeLock().tryLock();
+        //     }
+        // }
+
+        private void acquireLock(TransactionId tid, PageId pid, Permissions perm) {
+            if (!tidMap.containsKey(tid)) {
+                tidMap.put(tid, new HashSet<>());
+            }
+            tidMap.get(tid).add(pid);
+            PageReadWriteLock lock = getLock(pid);
+            if (perm == Permissions.READ_ONLY) {
+                lock.waitReadLock(tid);
+            } else {
+                lock.waitWriteLock(tid);
+            }
+        }
+
+        private void releaseLock(TransactionId tid) {
+            if (!tidMap.containsKey(tid)) {
+                return;
+            }
+            for (PageId pid : tidMap.get(tid)) {
+                PageReadWriteLock lock = getLock(pid);
+                lock.releaseLock(tid);
+            }
+            tidMap.remove(tid);
+        }
+
+        private void upgradeToWriteLock(TransactionId tid, PageId pid) {
+            PageReadWriteLock lock = getLock(pid);
+            lock.releaseLock(tid);
+            lock.waitWriteLock(tid);
+        }
+
+        private void releaseLock(TransactionId tid, PageId pid) {
+            if (!lockMap.containsKey(pid)) {
+                return;
+            }
+            PageReadWriteLock lock = lockMap.get(pid);
+            lock.releaseLock(tid);
+        }
+
+        private Set<PageId> getPages(TransactionId tid) {
+            return tidMap.get(tid);
+        }
+
+        private boolean holdsLock(TransactionId tid, PageId pid) {
+            if (!tidMap.containsKey(tid)) {
+                return false;
+            }
+            return tidMap.get(tid).contains(pid);
+        }
+    }
 
     /**
      * 创建一个最多缓存 numPages 个页面的 BufferPool。
@@ -36,7 +242,9 @@ public class BufferPool {
      */
     public BufferPool(int numPages) {
         pageMap = new ConcurrentHashMap<>();
+        pagesNotLocked = new ConcurrentSkipListSet<>();
         this.numPages = numPages;
+        pageLock = new PageLock();
     }
 
     public static int getPageSize() {
@@ -67,6 +275,10 @@ public class BufferPool {
      */
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
             throws TransactionAbortedException, DbException {
+        // 处理锁
+        pageLock.acquireLock(tid, pid, perm);
+        // 如果pid在pagesNotLocked中，就删除
+        pagesNotLocked.remove(pid);
         Page page = pageMap.get(pid);
         if (page == null) {
             if (pageMap.size() >= numPages) {
@@ -80,6 +292,10 @@ public class BufferPool {
         return page;
     }
 
+    public void upgradeToWriteLock(TransactionId tid, PageId pid) {
+        pageLock.upgradeToWriteLock(tid, pid);
+    }
+
     /**
      * 释放页面上的锁。
      * 调用这个是非常危险的，可能会导致错误的行为。仔细考虑谁需要调用这个以及为什么，
@@ -91,10 +307,12 @@ public class BufferPool {
     public void releasePage(TransactionId tid, PageId pid) {
         // 一些代码在这里
         // lab1|lab2 不需要
+        pageLock.releaseLock(tid, pid);
     }
 
     /**
      * 释放与给定事务相关联的所有锁。
+     * 释放后的页面加入到pagesNotLocked中。
      *
      * @param tid 请求解锁的事务的 ID
      */
@@ -107,7 +325,7 @@ public class BufferPool {
     public boolean holdsLock(TransactionId tid, PageId p) {
         // 一些代码在这里
         // lab1|lab2 不需要
-        return false;
+        return pageLock.holdsLock(tid, p);
     }
 
     /**
@@ -207,7 +425,7 @@ public class BufferPool {
      */
     private synchronized void flushPage(PageId pid) throws IOException {
         // 一些代码在这里
-        // lab1 不需要
+        // 获取锁
         if (pageMap.containsKey(pid)) {
             Page page = pageMap.get(pid);
             if (page.isDirty() != null) {
@@ -217,6 +435,13 @@ public class BufferPool {
                 page.markDirty(false, null);
             }
         }
+    }
+
+    private synchronized boolean isDirty(PageId pid) {
+        if (pageMap.containsKey(pid)) {
+            return pageMap.get(pid).isDirty() != null;
+        }
+        return false;
     }
 
     /**
@@ -235,14 +460,35 @@ public class BufferPool {
         // 一些代码在这里
         // lab1 不需要
         for (PageId pid : pageMap.keySet()) {
-            try {
-                flushPage(pid);
-            } catch (IOException e) {
-                e.printStackTrace();
+            if (isDirty(pid)) {
+                continue;
             }
+            // try {
+            //     flushPage(pid);
+            // } catch (IOException e) {
+            //     e.printStackTrace();
+            // }
             pageMap.remove(pid);
             return;
         }
+        // for (int tryTimes = 1; tryTimes < 10; ++tryTimes) {
+        //     for (PageId pid : pagesNotLocked) {
+        //         // 尝试获取锁，失败就continue
+        //         if (!pageLock.tryLock(pid, Permissions.READ_WRITE)) {
+        //             continue;
+        //         }
+        //         try {
+        //             flushPage(pid);
+        //             pageMap.remove(pid);
+        //         } catch (IOException e) {
+        //             e.printStackTrace();
+        //         } finally {
+        //             pageLock.releaseWriteLock(pid);
+        //         }
+        //         return;
+        //     }
+        // }
+        // throw new DbException("cannot evict page from buffer pool");
     }
 
 }
