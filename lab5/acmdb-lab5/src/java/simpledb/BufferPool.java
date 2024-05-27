@@ -32,13 +32,12 @@ public class BufferPool {
     private int numPages;
 
     private ConcurrentHashMap<PageId, Page> pageMap;
-    private ConcurrentSkipListSet<PageId> pagesNotLocked;
+    // private ConcurrentSkipListSet<PageId> pagesNotLocked;
     private PageLock pageLock;
 
     private class PageLock {
         private ConcurrentHashMap<PageId, PageReadWriteLock> lockMap;
         private ConcurrentHashMap<TransactionId, Set<PageId>> tidMap;
-        private ConcurrentHashMap<TransactionId, ConcurrentHashMap<PageId, Permissions>> permMap;
 
         private class PageReadWriteLock {
             private SimpleMutex lock;
@@ -166,7 +165,6 @@ public class BufferPool {
         private PageLock() {
             lockMap = new ConcurrentHashMap<>();
             tidMap = new ConcurrentHashMap<>();
-            permMap = new ConcurrentHashMap<>();
         }
 
         private PageReadWriteLock getLock(PageId pid) {
@@ -233,6 +231,10 @@ public class BufferPool {
             }
             return tidMap.get(tid).contains(pid);
         }
+
+        private void clearTid(TransactionId tid) {
+            tidMap.remove(tid);
+        }
     }
 
     /**
@@ -242,7 +244,7 @@ public class BufferPool {
      */
     public BufferPool(int numPages) {
         pageMap = new ConcurrentHashMap<>();
-        pagesNotLocked = new ConcurrentSkipListSet<>();
+        // pagesNotLocked = new ConcurrentSkipListSet<>();
         this.numPages = numPages;
         pageLock = new PageLock();
     }
@@ -277,8 +279,8 @@ public class BufferPool {
             throws TransactionAbortedException, DbException {
         // 处理锁
         pageLock.acquireLock(tid, pid, perm);
-        // 如果pid在pagesNotLocked中，就删除
-        pagesNotLocked.remove(pid);
+        // // 如果pid在pagesNotLocked中，就删除
+        // pagesNotLocked.remove(pid);
         Page page = pageMap.get(pid);
         if (page == null) {
             if (pageMap.size() >= numPages) {
@@ -312,13 +314,13 @@ public class BufferPool {
 
     /**
      * 释放与给定事务相关联的所有锁。
-     * 释放后的页面加入到pagesNotLocked中。
      *
      * @param tid 请求解锁的事务的 ID
      */
     public void transactionComplete(TransactionId tid) throws IOException {
         // 一些代码在这里
         // lab1|lab2 不需要
+        pageLock.releaseLock(tid);
     }
 
     /** 如果指定事务在指定页面上有锁，则返回 true */
@@ -338,6 +340,13 @@ public class BufferPool {
             throws IOException {
         // 一些代码在这里
         // lab1|lab2 不需要
+        if (commit) {
+            flushPages(tid);
+        } else {
+            discardPages(tid);
+        }
+        transactionComplete(tid);
+        pageLock.clearTid(tid);
     }
 
     /**
@@ -409,12 +418,27 @@ public class BufferPool {
         // 一些代码在这里
         // lab1 不需要
         if (pageMap.containsKey(pid)) {
-            try {
-                flushPage(pid);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            // try {
+            //     flushPage(pid);
+            // } catch (IOException e) {
+            //     e.printStackTrace();
+            // }
             pageMap.remove(pid);
+        }
+    }
+
+    /**
+     * 从缓冲池中移除特定的页面 id。
+     * 恢复管理器需要此操作以确保缓冲池不会在其缓存中保留已回滚的页面。
+     * 
+     * B+树文件也使用它来确保删除的页面从缓存中移除，以便可以安全地重用这些页面。
+     */
+    public synchronized void discardPages(TransactionId tid) {
+        // 一些代码在这里
+        // lab1 不需要
+        Set<PageId> pages = pageLock.getPages(tid);
+        for (PageId pid : pages) {
+            discardPage(pid);
         }
     }
 
@@ -450,6 +474,10 @@ public class BufferPool {
     public synchronized void flushPages(TransactionId tid) throws IOException {
         // 一些代码在这里
         // lab1|lab2 不需要
+        Set<PageId> pages = pageLock.getPages(tid);
+        for (PageId pid : pages) {
+            flushPage(pid);
+        }
     }
 
     /**
