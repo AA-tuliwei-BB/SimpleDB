@@ -542,7 +542,7 @@ public class BufferPool {
             } catch(Throwable e) {
                 future.cancel(true);
                 e.printStackTrace();
-                System.exit(1);
+                // System.exit(1);
             } finally {
                 // do nothing
             }
