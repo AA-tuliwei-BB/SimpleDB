@@ -51,7 +51,7 @@ public class BufferPool {
         }
 
         public boolean isAborting(TransactionId tid) {
-            synchronized(this) {
+            synchronized (this) {
                 for (TransactionInfo info : transactionInfos) {
                     if (info.tid.equals(tid)) {
                         return info.aborting;
@@ -62,7 +62,7 @@ public class BufferPool {
         }
 
         public boolean Abort(TransactionId tid) {
-            synchronized(this) {
+            synchronized (this) {
                 for (TransactionInfo info : transactionInfos) {
                     if (info.tid.equals(tid)) {
                         info.aborting = true;
@@ -74,7 +74,7 @@ public class BufferPool {
         }
 
         public void addTransaction(TransactionId tid) {
-            synchronized(this) {
+            synchronized (this) {
                 for (TransactionInfo info : transactionInfos) {
                     if (info.tid.equals(tid)) {
                         return;
@@ -90,7 +90,7 @@ public class BufferPool {
         }
 
         public void removeTransaction(TransactionId tid) {
-            synchronized(this) {
+            synchronized (this) {
                 for (TransactionInfo info : transactionInfos) {
                     if (info.tid.equals(tid)) {
                         transactionInfos.remove(info);
@@ -101,7 +101,7 @@ public class BufferPool {
         }
 
         public void setMayDeadlock(TransactionId tid, boolean val) {
-            synchronized(this) {
+            synchronized (this) {
                 for (TransactionInfo info : transactionInfos) {
                     if (info.tid.equals(tid)) {
                         info.mayDeadlock = val;
@@ -112,7 +112,7 @@ public class BufferPool {
         }
 
         public boolean shouldAbort(TransactionId tid, int num) {
-            synchronized(this) {
+            synchronized (this) {
                 // 如果在倒数前num个mayDeadLock中，则返回true
                 for (int i = transactionInfos.size() - 1, count = 0; i >= 0 && count < num; --i) {
                     if (transactionInfos.get(i).tid.equals(tid)) {
@@ -231,7 +231,7 @@ public class BufferPool {
                         wlock.unlock();
                         return;
                     }
-                    if (tidLock.get(tid) == WAIT_UPGRADE) {
+                    if (tidLock.get(tid) == WAIT_UPGRADE - 1) {
                         rlock.unlock();
                         wlock.unlock();
                         System.exit(1);
@@ -262,15 +262,20 @@ public class BufferPool {
                             tidLock.put(tid, WAIT_UPGRADE);
                             condition.drainPermits();
                             rlock.unlock();
+                            tidLock.put(tid, WAIT_UPGRADE - 1);
                             try {
                                 condition.acquire(numAcquired);
-                            } catch (Exception e) {
+                            } catch (Throwable e) {
+                                if (!(e instanceof InterruptedException)) {
+                                    System.exit(1);
+                                }
                                 condition.release(numAcquired);
                                 tidLock.put(tid, tmp);
                                 lock.unlock();
                                 wlock.unlock();
                                 return;
                             }
+                            tidLock.put(tid, WAIT_UPGRADE - 2);
                             rlock.lock();
                             if (tmp != readCount) {
                                 throw new RuntimeException("error");
@@ -284,7 +289,10 @@ public class BufferPool {
                     }
                     rlock.unlock();
                     writeLock.acquire();
-                } catch (InterruptedException e) {
+                } catch (Exception e) {
+                    if (!(e instanceof InterruptedException)) {
+                        System.exit(1);
+                    }
                     wlock.unlock();
                     lock.unlock();
                     e.printStackTrace();
@@ -349,30 +357,30 @@ public class BufferPool {
         }
 
         // private boolean tryLock(PageId pid, Permissions perm) {
-        //     PageReadWriteLock lock = getLock(pid);
-        //     if (perm == Permissions.READ_ONLY) {
-        //         return lock.readLock().tryLock();
-        //     } else {
-        //         return lock.writeLock().tryLock();
-        //     }
+        // PageReadWriteLock lock = getLock(pid);
+        // if (perm == Permissions.READ_ONLY) {
+        // return lock.readLock().tryLock();
+        // } else {
+        // return lock.writeLock().tryLock();
+        // }
         // }
 
         private void acquireLock(TransactionId tid, PageId pid, Permissions perm) {
-            synchronized(this) {
+            synchronized (this) {
                 if (!tidMap.containsKey(tid)) {
                     tidMap.put(tid, new CopyOnWriteArraySet<>());
                     transactionManager.addTransaction(tid);
                 }
             }
             PageReadWriteLock lock = getLock(pid);
-                // lock.waitWriteLock(tid);
+            // lock.waitWriteLock(tid);
             if (perm == Permissions.READ_ONLY) {
                 lock.waitReadLock(tid);
             } else {
                 lock.waitWriteLock(tid);
             }
             try {
-                boolean result = tidMap.get(tid).add(pid);
+                tidMap.get(tid).add(pid);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -472,54 +480,84 @@ public class BufferPool {
      */
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
             throws TransactionAbortedException, DbException {
+        if (transactionManager.isAborting(tid)) {
+            throw new TransactionAbortedException();
+        }
         // 处理锁
         boolean doneFlag = false;
         Random random = new Random();
+        waitingCount.merge(tid, 1, Integer::sum);
         ExecutorService executor = Executors.newSingleThreadExecutor();
-        // waitingCount.merge(tid, 1, Integer::sum);
         for (int basic_time = 200, max_waiting_time = basic_time; max_waiting_time <= 1024 * basic_time; max_waiting_time *= 2) {
-            Future<Void> future = executor.submit(() -> {
-                pageLock.acquireLock(tid, pid, perm);
-                return null;
-            });
+            Future<Void> future = null;
+            try {
+                future = executor.submit(() -> {
+                    pageLock.acquireLock(tid, pid, perm);
+                    return null;
+                });
+            } catch (Throwable e) {
+                e.printStackTrace();
+                System.exit(1);
+            }
             try {
                 int actual_waiting_time = max_waiting_time + random.nextInt(max_waiting_time / 10);
                 future.get(actual_waiting_time, TimeUnit.MILLISECONDS);
             } catch (TimeoutException e) {
-                if (transactionManager.isAborting(tid)) {
-                    // waitingCount.merge(tid, -1, Integer::sum);
-                    executor.shutdown();
-                    future.cancel(true);
-                    throw new TransactionAbortedException();
-                }
-                if (max_waiting_time >= 400) {
-                    transactionManager.setMayDeadlock(tid, true);
-                }
-                int numAbort = max_waiting_time / basic_time;
-                if (max_waiting_time == basic_time * 1024 || transactionManager.shouldAbort(tid, numAbort)) {
-                    // waitingCount.merge(tid, -1, Integer::sum);
-                    executor.shutdown();
-                    future.cancel(true);
-                    throw new TransactionAbortedException();
+                try {
+                    if (max_waiting_time >= 400) {
+                        transactionManager.setMayDeadlock(tid, true);
+                    }
+                    int numAbort = max_waiting_time / basic_time;
+                    if (transactionManager.isAborting(tid) ||
+                            max_waiting_time >= basic_time * 1024 ||
+                            transactionManager.shouldAbort(tid, numAbort)) {
+                        // waitingCount.merge(tid, -1, Integer::sum);
+                        if (!future.cancel(true)) {
+                            System.exit(1);
+                        }
+                        waitingCount.merge(tid, -1, Integer::sum);
+                        executor.shutdownNow();
+                        while (!executor.awaitTermination(1, TimeUnit.MICROSECONDS)) {
+                            executor.shutdownNow();
+                        }
+                        throw new TransactionAbortedException();
+                    }
+                    if (!future.cancel(true)) {
+                        System.exit(1);
+                    }
+                    continue;
+                } catch (TransactionAbortedException e1) {
+                    throw e1;
+                } catch (Throwable e2) {
+                    e2.printStackTrace();
+                    System.exit(1);
                 }
             } catch (InterruptedException | ExecutionException e) {
-                future.cancel(true);
+                if (!future.cancel(true)) {
+                    System.exit(1);
+                }
+                waitingCount.merge(tid, -1, Integer::sum);
                 executor.shutdown();
                 throw new TransactionAbortedException();
+            } catch(Throwable e) {
+                future.cancel(true);
+                e.printStackTrace();
+                System.exit(1);
             } finally {
-                // 有点隐患，先不管了
-                if (!future.isDone()) {
-                    future.cancel(true);
-                } else {
-                    transactionManager.setMayDeadlock(tid, false);
-                    doneFlag = true;
-                    break;
-                }
+                // do nothing
             }
+            if (!future.isDone()) {
+                // should not happend
+                System.exit(1);
+            }
+            future.cancel(true);
+            waitingCount.merge(tid, -1, Integer::sum);
+            executor.shutdown();
+            transactionManager.setMayDeadlock(tid, false);
+            doneFlag = true;
+            break;
         }
-        executor.shutdown();
         if (!doneFlag) {
-            // waitingCount.merge(tid, -1, Integer::sum);
             throw new TransactionAbortedException();
         }
         // throw new TransactionAbortedException();
@@ -538,8 +576,9 @@ public class BufferPool {
         return page;
     }
 
-    // public void upgradeToWriteLock(TransactionId tid, PageId pid) throws TransactionAbortedException, DbException {
-    //     getPage(tid, pid, Permissions.READ_WRITE);
+    // public void upgradeToWriteLock(TransactionId tid, PageId pid) throws
+    // TransactionAbortedException, DbException {
+    // getPage(tid, pid, Permissions.READ_WRITE);
     // }
 
     /**
@@ -677,9 +716,9 @@ public class BufferPool {
         // lab1 不需要
         if (pageMap.containsKey(pid)) {
             // try {
-            //     flushPage(pid);
+            // flushPage(pid);
             // } catch (IOException e) {
-            //     e.printStackTrace();
+            // e.printStackTrace();
             // }
             pageMap.remove(pid);
         }
@@ -753,30 +792,30 @@ public class BufferPool {
                 continue;
             }
             // try {
-            //     flushPage(pid);
+            // flushPage(pid);
             // } catch (IOException e) {
-            //     e.printStackTrace();
+            // e.printStackTrace();
             // }
             pageMap.remove(pid);
             return;
         }
         throw new DbException("run out of buffer pool");
         // for (int tryTimes = 1; tryTimes < 10; ++tryTimes) {
-        //     for (PageId pid : pagesNotLocked) {
-        //         // 尝试获取锁，失败就continue
-        //         if (!pageLock.tryLock(pid, Permissions.READ_WRITE)) {
-        //             continue;
-        //         }
-        //         try {
-        //             flushPage(pid);
-        //             pageMap.remove(pid);
-        //         } catch (IOException e) {
-        //             e.printStackTrace();
-        //         } finally {
-        //             pageLock.releaseWriteLock(pid);
-        //         }
-        //         return;
-        //     }
+        // for (PageId pid : pagesNotLocked) {
+        // // 尝试获取锁，失败就continue
+        // if (!pageLock.tryLock(pid, Permissions.READ_WRITE)) {
+        // continue;
+        // }
+        // try {
+        // flushPage(pid);
+        // pageMap.remove(pid);
+        // } catch (IOException e) {
+        // e.printStackTrace();
+        // } finally {
+        // pageLock.releaseWriteLock(pid);
+        // }
+        // return;
+        // }
         // }
         // throw new DbException("cannot evict page from buffer pool");
     }
