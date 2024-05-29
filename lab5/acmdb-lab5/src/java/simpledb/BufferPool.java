@@ -2,11 +2,9 @@ package simpledb;
 
 import java.io.*;
 import java.util.*;
-import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.*;
+//import java.util.concurrent.ConcurrentSkipListSet;
+// import java.util.concurrent.locks.Condition;
 
 /**
  * BufferPool 管理着从磁盘到内存中的页面读写操作。
@@ -31,9 +29,112 @@ public class BufferPool {
 
     private int numPages;
 
+    private ConcurrentHashMap<TransactionId, Integer> waitingCount;
     private ConcurrentHashMap<PageId, Page> pageMap;
     // private ConcurrentSkipListSet<PageId> pagesNotLocked;
     private PageLock pageLock;
+    private TransactionManager transactionManager;
+
+    private class TransactionManager {
+        private class TransactionInfo {
+            public TransactionId tid;
+            @SuppressWarnings("unused")
+            public long startTime;
+            public boolean mayDeadlock = false;
+            public boolean aborting = false;
+        }
+
+        private ArrayList<TransactionInfo> transactionInfos;
+
+        TransactionManager() {
+            transactionInfos = new ArrayList<>();
+        }
+
+        public boolean isAborting(TransactionId tid) {
+            synchronized(this) {
+                for (TransactionInfo info : transactionInfos) {
+                    if (info.tid.equals(tid)) {
+                        return info.aborting;
+                    }
+                }
+                return false;
+            }
+        }
+
+        public boolean Abort(TransactionId tid) {
+            synchronized(this) {
+                for (TransactionInfo info : transactionInfos) {
+                    if (info.tid.equals(tid)) {
+                        info.aborting = true;
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+
+        public void addTransaction(TransactionId tid) {
+            synchronized(this) {
+                for (TransactionInfo info : transactionInfos) {
+                    if (info.tid.equals(tid)) {
+                        return;
+                    }
+                }
+                TransactionInfo info = new TransactionInfo();
+                info.tid = tid;
+                info.startTime = System.currentTimeMillis();
+                info.mayDeadlock = false;
+                info.aborting = false;
+                transactionInfos.add(info);
+            }
+        }
+
+        public void removeTransaction(TransactionId tid) {
+            synchronized(this) {
+                for (TransactionInfo info : transactionInfos) {
+                    if (info.tid.equals(tid)) {
+                        transactionInfos.remove(info);
+                        return;
+                    }
+                }
+            }
+        }
+
+        public void setMayDeadlock(TransactionId tid, boolean val) {
+            synchronized(this) {
+                for (TransactionInfo info : transactionInfos) {
+                    if (info.tid.equals(tid)) {
+                        info.mayDeadlock = val;
+                        return;
+                    }
+                }
+            }
+        }
+
+        public boolean shouldAbort(TransactionId tid, int num) {
+            synchronized(this) {
+                // 如果在倒数前num个mayDeadLock中，则返回true
+                for (int i = transactionInfos.size() - 1, count = 0; i >= 0 && count < num; --i) {
+                    if (transactionInfos.get(i).tid.equals(tid)) {
+                        if (transactionInfos.get(i).mayDeadlock) {
+                            for (int j = i - 1; j >= 0; --j) {
+                                if (transactionInfos.get(j).mayDeadlock) {
+                                    return true;
+                                }
+                            }
+                            return false;
+                        } else {
+                            return false;
+                        }
+                    }
+                    if (transactionInfos.get(i).mayDeadlock) {
+                        ++count;
+                    }
+                }
+                return false;
+            }
+        }
+    }
 
     private class PageLock {
         private ConcurrentHashMap<PageId, PageReadWriteLock> lockMap;
@@ -44,11 +145,13 @@ public class BufferPool {
             private SimpleMutex rlock;
             private SimpleMutex wlock;
             private Semaphore writeLock;
+            private Semaphore condition;
             private int readCount;
             private ConcurrentHashMap<TransactionId, Integer> tidLock;
             // static final int UNLOCK = 0;
             static final int READ_LOCK = 1;
             static final int WRITE_LOCK = -1;
+            static final int WAIT_UPGRADE = -2;
 
             private class SimpleMutex {
                 private Semaphore lock;
@@ -65,6 +168,10 @@ public class BufferPool {
                     }
                 }
 
+                public void lock_with_interrupt() throws InterruptedException {
+                    lock.acquire();
+                }
+
                 public void unlock() {
                     lock.release();
                 }
@@ -77,6 +184,7 @@ public class BufferPool {
                 writeLock = new Semaphore(1);
                 readCount = 0;
                 tidLock = new ConcurrentHashMap<>();
+                condition = new Semaphore(0);
             }
 
             public void waitReadLock(TransactionId tid) {
@@ -88,53 +196,99 @@ public class BufferPool {
                     return;
                 }
                 wlock.unlock();
-                lock.lock();
-                if (readCount == 0) {
-                    try {
-                        writeLock.acquire();
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }
-                readCount++;
-                // tidLock[tid]加一
-                tidLock.merge(tid, 1, Integer::sum);
                 rlock.unlock();
-                lock.unlock();
+                try {
+                    lock.lock_with_interrupt();
+                } catch (InterruptedException e) {
+                    return;
+                }
+                try {
+                    rlock.lock();
+                    if (readCount == 0) {
+                        try {
+                            writeLock.acquire();
+                        } catch (InterruptedException e) {
+                            // should not happend
+                            lock.unlock();
+                            return;
+                        }
+                    }
+                    readCount++;
+                    // tidLock[tid]加一
+                    tidLock.merge(tid, 1, Integer::sum);
+                    rlock.unlock();
+                } finally {
+                    lock.unlock();
+                }
             }
 
             public void waitWriteLock(TransactionId tid) {
-                rlock.lock();
                 wlock.lock();
-                if (tidLock.containsKey(tid) && tidLock.get(tid).equals(WRITE_LOCK)) {
-                    rlock.unlock();
+                rlock.lock();
+                if (tidLock.containsKey(tid)) {
+                    if (tidLock.get(tid).equals(WRITE_LOCK)) {
+                        rlock.unlock();
+                        wlock.unlock();
+                        return;
+                    }
+                    if (tidLock.get(tid) == WAIT_UPGRADE) {
+                        rlock.unlock();
+                        wlock.unlock();
+                        System.exit(1);
+                        return;
+                    }
+                }
+                rlock.unlock();
+
+                try {
+                    lock.lock_with_interrupt();
+                } catch (InterruptedException e) {
                     wlock.unlock();
                     return;
                 }
-                rlock.unlock();
-                lock.lock();
-                rlock.lock();
-                if (tidLock.containsKey(tid)) {
-                    if (tidLock.get(tid) == WRITE_LOCK) {
-                        rlock.unlock();
-                        return;
-                    }
-                    if (tidLock.get(tid) == READ_LOCK) {
-                        readCount--;
-                        if (readCount == 0) {
+
+                try {
+                    rlock.lock();
+                    if (tidLock.containsKey(tid) && tidLock.get(tid) >= READ_LOCK) {
+                        if (tidLock.get(tid) == readCount) {
+                            readCount = 0;
+                            tidLock.put(tid, WRITE_LOCK);
+                            rlock.unlock();
+                            wlock.unlock();
+                            return;
+                        } else {
+                            int numAcquired = readCount - tidLock.get(tid);
+                            int tmp = tidLock.get(tid);
+                            tidLock.put(tid, WAIT_UPGRADE);
+                            condition.drainPermits();
+                            rlock.unlock();
+                            try {
+                                condition.acquire(numAcquired);
+                            } catch (Exception e) {
+                                condition.release(numAcquired);
+                                tidLock.put(tid, tmp);
+                                lock.unlock();
+                                wlock.unlock();
+                                return;
+                            }
+                            rlock.lock();
+                            if (tmp != readCount) {
+                                throw new RuntimeException("error");
+                            }
+                            readCount = 0;
                             tidLock.put(tid, WRITE_LOCK);
                             rlock.unlock();
                             wlock.unlock();
                             return;
                         }
-                        tidLock.remove(tid);
                     }
-                }
-                rlock.unlock();
-                try {
+                    rlock.unlock();
                     writeLock.acquire();
                 } catch (InterruptedException e) {
+                    wlock.unlock();
+                    lock.unlock();
                     e.printStackTrace();
+                    return;
                 }
                 rlock.lock();
                 tidLock.put(tid, WRITE_LOCK);
@@ -144,7 +298,7 @@ public class BufferPool {
 
             public void releaseLock(TransactionId tid) {
                 rlock.lock();
-                if (tidLock.get(tid) >= READ_LOCK) {
+                if (tidLock.containsKey(tid) && tidLock.get(tid) >= READ_LOCK) {
                     readCount--;
                     tidLock.merge(tid, -1, Integer::sum);
                     if (tidLock.get(tid) == 0) {
@@ -152,8 +306,28 @@ public class BufferPool {
                     }
                     if (readCount == 0) {
                         writeLock.release();
+                    } else {
+                        condition.release();
                     }
-                } else if (tidLock.get(tid) == WRITE_LOCK) {
+                } else if (tidLock.containsKey(tid) && tidLock.get(tid) == WRITE_LOCK) {
+                    writeLock.release();
+                    tidLock.remove(tid);
+                    lock.unlock();
+                }
+                rlock.unlock();
+            }
+
+            public void releaseAllLock(TransactionId tid) {
+                rlock.lock();
+                if (tidLock.containsKey(tid) && tidLock.get(tid) >= READ_LOCK) {
+                    int count = tidLock.remove(tid);
+                    readCount -= count;
+                    if (readCount == 0) {
+                        writeLock.release();
+                    } else {
+                        condition.release(count);
+                    }
+                } else if (tidLock.containsKey(tid) && tidLock.get(tid) == WRITE_LOCK) {
                     writeLock.release();
                     tidLock.remove(tid);
                     lock.unlock();
@@ -184,16 +358,25 @@ public class BufferPool {
         // }
 
         private void acquireLock(TransactionId tid, PageId pid, Permissions perm) {
-            if (!tidMap.containsKey(tid)) {
-                tidMap.put(tid, new HashSet<>());
+            synchronized(this) {
+                if (!tidMap.containsKey(tid)) {
+                    tidMap.put(tid, new CopyOnWriteArraySet<>());
+                    transactionManager.addTransaction(tid);
+                }
             }
-            tidMap.get(tid).add(pid);
             PageReadWriteLock lock = getLock(pid);
+                // lock.waitWriteLock(tid);
             if (perm == Permissions.READ_ONLY) {
                 lock.waitReadLock(tid);
             } else {
                 lock.waitWriteLock(tid);
             }
+            try {
+                boolean result = tidMap.get(tid).add(pid);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            // Set<PageId> s = tidMap.get(tid);
         }
 
         private void releaseLock(TransactionId tid) {
@@ -207,9 +390,19 @@ public class BufferPool {
             tidMap.remove(tid);
         }
 
+        private void releaseAllLock(TransactionId tid) {
+            if (!tidMap.containsKey(tid)) {
+                return;
+            }
+            for (PageId pid : tidMap.get(tid)) {
+                PageReadWriteLock lock = getLock(pid);
+                lock.releaseAllLock(tid);
+            }
+            tidMap.remove(tid);
+        }
+
         private void upgradeToWriteLock(TransactionId tid, PageId pid) {
             PageReadWriteLock lock = getLock(pid);
-            lock.releaseLock(tid);
             lock.waitWriteLock(tid);
         }
 
@@ -247,6 +440,8 @@ public class BufferPool {
         // pagesNotLocked = new ConcurrentSkipListSet<>();
         this.numPages = numPages;
         pageLock = new PageLock();
+        transactionManager = new TransactionManager();
+        waitingCount = new ConcurrentHashMap<>();
     }
 
     public static int getPageSize() {
@@ -278,7 +473,56 @@ public class BufferPool {
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
             throws TransactionAbortedException, DbException {
         // 处理锁
-        pageLock.acquireLock(tid, pid, perm);
+        boolean doneFlag = false;
+        Random random = new Random();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        // waitingCount.merge(tid, 1, Integer::sum);
+        for (int basic_time = 200, max_waiting_time = basic_time; max_waiting_time <= 1024 * basic_time; max_waiting_time *= 2) {
+            Future<Void> future = executor.submit(() -> {
+                pageLock.acquireLock(tid, pid, perm);
+                return null;
+            });
+            try {
+                int actual_waiting_time = max_waiting_time + random.nextInt(max_waiting_time / 10);
+                future.get(actual_waiting_time, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                if (transactionManager.isAborting(tid)) {
+                    // waitingCount.merge(tid, -1, Integer::sum);
+                    executor.shutdown();
+                    future.cancel(true);
+                    throw new TransactionAbortedException();
+                }
+                if (max_waiting_time >= 400) {
+                    transactionManager.setMayDeadlock(tid, true);
+                }
+                int numAbort = max_waiting_time / basic_time;
+                if (max_waiting_time == basic_time * 1024 || transactionManager.shouldAbort(tid, numAbort)) {
+                    // waitingCount.merge(tid, -1, Integer::sum);
+                    executor.shutdown();
+                    future.cancel(true);
+                    throw new TransactionAbortedException();
+                }
+            } catch (InterruptedException | ExecutionException e) {
+                future.cancel(true);
+                executor.shutdown();
+                throw new TransactionAbortedException();
+            } finally {
+                // 有点隐患，先不管了
+                if (!future.isDone()) {
+                    future.cancel(true);
+                } else {
+                    transactionManager.setMayDeadlock(tid, false);
+                    doneFlag = true;
+                    break;
+                }
+            }
+        }
+        executor.shutdown();
+        if (!doneFlag) {
+            // waitingCount.merge(tid, -1, Integer::sum);
+            throw new TransactionAbortedException();
+        }
+        // throw new TransactionAbortedException();
         // // 如果pid在pagesNotLocked中，就删除
         // pagesNotLocked.remove(pid);
         Page page = pageMap.get(pid);
@@ -294,9 +538,9 @@ public class BufferPool {
         return page;
     }
 
-    public void upgradeToWriteLock(TransactionId tid, PageId pid) {
-        pageLock.upgradeToWriteLock(tid, pid);
-    }
+    // public void upgradeToWriteLock(TransactionId tid, PageId pid) throws TransactionAbortedException, DbException {
+    //     getPage(tid, pid, Permissions.READ_WRITE);
+    // }
 
     /**
      * 释放页面上的锁。
@@ -320,7 +564,7 @@ public class BufferPool {
     public void transactionComplete(TransactionId tid) throws IOException {
         // 一些代码在这里
         // lab1|lab2 不需要
-        pageLock.releaseLock(tid);
+        transactionComplete(tid, true);
     }
 
     /** 如果指定事务在指定页面上有锁，则返回 true */
@@ -330,13 +574,24 @@ public class BufferPool {
         return pageLock.holdsLock(tid, p);
     }
 
+    public void waitAbort(TransactionId tid) {
+        // 每隔10ms检查一次
+        while (waitingCount.get(tid) != null && waitingCount.get(tid) > 0) {
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
     /**
      * 提交或中止给定事务；释放事务相关的所有锁。
      *
      * @param tid    请求解锁的事务的 ID
      * @param commit 标志是否应该提交或中止
      */
-    public void transactionComplete(TransactionId tid, boolean commit)
+    public synchronized void transactionComplete(TransactionId tid, boolean commit)
             throws IOException {
         // 一些代码在这里
         // lab1|lab2 不需要
@@ -344,8 +599,11 @@ public class BufferPool {
             flushPages(tid);
         } else {
             discardPages(tid);
+            transactionManager.Abort(tid);
         }
-        transactionComplete(tid);
+        waitAbort(tid);
+        pageLock.releaseAllLock(tid);
+        transactionManager.removeTransaction(tid);
         pageLock.clearTid(tid);
     }
 
@@ -475,6 +733,9 @@ public class BufferPool {
         // 一些代码在这里
         // lab1|lab2 不需要
         Set<PageId> pages = pageLock.getPages(tid);
+        if (pages == null) {
+            return;
+        }
         for (PageId pid : pages) {
             flushPage(pid);
         }
@@ -499,6 +760,7 @@ public class BufferPool {
             pageMap.remove(pid);
             return;
         }
+        throw new DbException("run out of buffer pool");
         // for (int tryTimes = 1; tryTimes < 10; ++tryTimes) {
         //     for (PageId pid : pagesNotLocked) {
         //         // 尝试获取锁，失败就continue

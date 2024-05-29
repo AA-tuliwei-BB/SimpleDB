@@ -107,8 +107,9 @@ public class HeapFile implements DbFile {
         // 不加 i < numPages() 了是因为将创建新页的任务放在了Bufferpool中以保证事务的正确性
         for (int i = 0; i < numPages(); i++) {
             HeapPageId pid = new HeapPageId(getId(), i);
-            HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_WRITE);
+            HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_ONLY);
             if (page.getNumEmptySlots() > 0) {
+                page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_WRITE);
                 // Database.getBufferPool().upgradeToWriteLock(tid, pid);
                 page.insertTuple(t);
                 affectedPages.add(page);
